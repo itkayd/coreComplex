@@ -1,0 +1,13 @@
+{
+  "name": "dyr-mandarin-lab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dyr Mandarin Lab — adaptive Chinese memory kernel. Headless brain first (spec Stages 0–1).",
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "node --test --experimental-strip-types \"packages/**/*.test.ts\" \"fixtures/**/*.test.ts\"",
+    "sim": "node fixtures/sim/simulate.ts"
+  }
+}
