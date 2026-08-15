@@ -136,7 +136,25 @@ export interface SupabaseConfig {
 
 export type ConfigResult =
   | { ok: true; config: SupabaseConfig }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; present: string[] };
+
+/**
+ * The NAMES of the database-ish variables this environment actually has.
+ *
+ * Values are never read, let alone returned — a variable's name carries no
+ * secret, and without this a misconfigured deployment says only "not set",
+ * which is true and useless. The Vercel ↔ Supabase integration can be scoped to
+ * a subset of environments, so "the integration is connected" and "this build
+ * can see it" are different facts, and this is what distinguishes them.
+ *
+ * The prefix allowlist matters: enumerating every environment variable would
+ * disclose unrelated infrastructure.
+ */
+export function presentVariableNames(env: Record<string, string | undefined>): string[] {
+  return Object.keys(env)
+    .filter((name) => /^(SUPABASE_|NEXT_PUBLIC_SUPABASE_|POSTGRES_)/.test(name))
+    .sort();
+}
 
 /**
  * Resolve the server-side Supabase credentials.
@@ -164,9 +182,14 @@ export function resolveConfig(env: Record<string, string | undefined> = process.
       : undefined;
   const key = keySource ? env[keySource] : undefined;
 
-  if (!url) return { ok: false, reason: "SUPABASE_URL is not set for this deployment" };
+  const present = presentVariableNames(env);
+  if (!url) return { ok: false, reason: "SUPABASE_URL is not set for this deployment", present };
   if (!key || !keySource) {
-    return { ok: false, reason: "no server-side Supabase key is set (SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY)" };
+    return {
+      ok: false,
+      reason: "no server-side Supabase key is set (SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY)",
+      present,
+    };
   }
   return { ok: true, config: { url, key, keySource } };
 }
@@ -356,8 +379,13 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   const config = resolveConfig();
   if (!config.ok) {
     // Missing configuration is a supported state, not a crash: the app hides the
-    // backup control and carries on entirely offline.
-    json(res, 503, { ok: false, configured: false, backend: BACKEND, error: config.reason });
+    // backup control and carries on entirely offline. `present` lists the NAMES
+    // of the database variables this build can see — no values — so a scoping
+    // mistake is diagnosable instead of merely "not set".
+    json(res, 503, {
+      ok: false, configured: false, backend: BACKEND,
+      error: config.reason, present: config.present,
+    });
     return;
   }
   await handleSync(req, res, supabaseStore(config.config));
