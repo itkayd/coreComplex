@@ -125,3 +125,17 @@ test("PROPERTY determinism: identical script + seed + config => identical state"
     { numRuns: 30 },
   );
 });
+
+test("PROPERTY determinism extends to event IDENTITY and causation edges", () => {
+  // The trace/log digests deliberately omit eventId, so they cannot catch a
+  // non-deterministic id source (e.g. a process-global counter). Compare the
+  // full causal graph — ids and the edges between them — instead.
+  fc.assert(
+    fc.property(fc.array(fc.boolean(), { minLength: 1, maxLength: 10 }), fc.integer({ min: 1, max: 3 }), (correctness, days) => {
+      const shape = (h: ReturnType<typeof makeHarness>) =>
+        h.kernel.log.all().map((e) => [e.eventId, e.eventType, e.causationId ?? "-", e.correlationId ?? "-"].join("|")).join("\n");
+      return shape(driveScript(correctness, days)) === shape(driveScript(correctness, days));
+    }),
+    { numRuns: 25 },
+  );
+});

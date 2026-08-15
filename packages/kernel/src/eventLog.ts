@@ -38,12 +38,19 @@ export interface AppendInput<P> {
 
 export class EventLog {
   private readonly events: EventEnvelope[] = [];
-  private readonly seenKeys = new Set<string>();
+  /** idempotencyKey -> envelope, for O(1) duplicate detection. */
+  private readonly byKey = new Map<string, EventEnvelope>();
   private nextSequence = 1;
 
-  /** Deterministic, sequence-derived event id — no wall clock, no RNG. */
+  /**
+   * Deterministic, sequence-derived event id — no wall clock, no RNG, and no
+   * process-global counter. (learnerId, localSequence) is already unique within
+   * a log, so two kernels replaying the same events mint IDENTICAL event ids.
+   * A global counter here would silently break the replay contract for anything
+   * that compares causation edges rather than just the trace digest.
+   */
   private mintId(learnerId: LearnerId, seq: number): EventId {
-    return `evt_${hashValue([learnerId, seq, counter++])}` as EventId;
+    return `evt_${hashValue([learnerId, seq])}` as EventId;
   }
 
   /**
@@ -51,9 +58,7 @@ export class EventLog {
    * envelope untouched (spec p.24 "Upload events idempotently on reconnect").
    */
   append<P>(input: AppendInput<P>): EventEnvelope<P> {
-    const existing = this.events.find(
-      (e) => e.idempotencyKey === input.idempotencyKey,
-    );
+    const existing = this.byKey.get(input.idempotencyKey);
     if (existing) return existing as EventEnvelope<P>;
 
     const seq = this.nextSequence++;
@@ -76,7 +81,7 @@ export class EventLog {
       payloadHash: hashValue(input.payload),
     };
     this.events.push(envelope);
-    this.seenKeys.add(input.idempotencyKey);
+    this.byKey.set(input.idempotencyKey, envelope);
     return envelope;
   }
 

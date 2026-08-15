@@ -25,8 +25,20 @@ import { TraceStore } from "./traceStore.ts";
 
 /** A trace counts toward the frontier once it is genuinely retained. */
 const RETAINED_MIN_STABILITY = 1; // days
+/**
+ * A trace is RETAINED only once it has graduated the (re)learning steps into
+ * review state and carries real stability. This is deliberately stricter than
+ * "answered correctly once": with ts-fsrs short-term steps a single Good already
+ * yields stability > 1 while the card is still in `learning`, so a stability-only
+ * test would make every first success look mastered — collapsing the
+ * exposed/retained distinction that non-linear eligibility (ADR-0005) and the
+ * 48/41/23/18 acceptance fixture both depend on.
+ *
+ * EXPOSED (evidenceCount > 0) and RETAINED are therefore genuinely different
+ * levels of evidence, which is what the spec's progression gates require.
+ */
 export function isRetained(t: SkillTrace): boolean {
-  return t.state !== "new" && t.evidenceCount > 0 && t.stability >= RETAINED_MIN_STABILITY;
+  return t.state === "review" && t.evidenceCount > 0 && t.stability >= RETAINED_MIN_STABILITY;
 }
 
 export interface SkillProgress {
