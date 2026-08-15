@@ -1,0 +1,14 @@
+# Test files must not become deployed routes. Vercel turns every file under
+# api/ into a serverless function, so api/api.test.ts would be published at
+# /api/api.test — a route that exists for no reason and exposes test source.
+api/**/*.test.ts
+
+# Nothing below is needed to build or serve the app.
+docs
+sources
+fixtures
+artifacts
+apps/web/e2e
+apps/web/dist-fixture
+scripts/build-fixture-pack.ts
+scripts/e2e.ts
