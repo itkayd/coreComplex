@@ -3,9 +3,14 @@ dist/
 *.log
 .DS_Store
 coverage/
-packs/
+/packs/
 apps/web/dist/
-apps/web/public/packs/
+# Built pack output. A negation cannot re-include a file whose parent directory
+# is excluded, so exclude the CONTENTS and then re-include the one source asset.
+apps/web/public/packs/*
+# The HSK word lists are a committed SOURCE asset, not build output: deriving
+# them needs the network, and no build may depend on that.
+!apps/web/public/packs/hsk-bands.json
 models/
 pretrained_models/
 .cache/

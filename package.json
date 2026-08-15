@@ -31,7 +31,8 @@
     "e2e:listening": "node apps/web/e2e/listening.mjs",
     "build:fixture-pack": "node scripts/build-fixture-pack.ts",
     "content:audio:review": "node packages/content/bin/audio-review.ts",
-    "content:audio:certify": "node packages/content/bin/audio-certify.ts"
+    "content:audio:certify": "node packages/content/bin/audio-certify.ts",
+    "content:import:hsk": "node scripts/import-hsk.ts"
   },
   "devDependencies": {
     "@types/node": "22.10.5",

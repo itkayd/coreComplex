@@ -106,6 +106,10 @@ async function run() {
     afterReload.join(" | "));
   await audit(page, "progress");
 
+  await page.getByRole("button", { name: "Words" }).click();
+  await page.waitForSelector(".hsk-bar", { timeout: 15_000 });
+  await audit(page, "words");
+
   await page.getByRole("button", { name: "Settings" }).click();
   await page.waitForSelector("h1");
   await audit(page, "settings");

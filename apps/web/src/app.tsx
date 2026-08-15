@@ -18,6 +18,7 @@ import { SyntheticAudioButton } from "./SyntheticAudioButton.tsx";
 import { SPEECH_AVAILABLE } from "./speech.ts";
 import { health, setSyncEnabled, syncEnabled, type SyncStatus } from "./sync.ts";
 import { CanonicalAudioCue, type CueStatus } from "./CanonicalAudioCue.tsx";
+import { Words } from "./Words.tsx";
 import {
   MODE_MINUTES,
   PACK_BASE_URL,
@@ -33,7 +34,7 @@ import {
   type SessionState,
 } from "./session.ts";
 
-type Screen = "home" | "task" | "result" | "progress" | "settings";
+type Screen = "home" | "task" | "result" | "words" | "progress" | "settings";
 
 /** Accepted answers arrive "|"-separated; never show the raw key to a learner. */
 function splitAnswers(expected: string): string[] {
@@ -126,12 +127,13 @@ export function App() {
           <Result result={result.res} task={result.task} expected={result.expected}
             pack={state.pack} position={index} total={plan.tasks.length} onNext={next} />
         )}
+        {screen === "words" && <Words state={state} key={`w${tick}`} />}
         {screen === "progress" && <Progress state={state} key={`p${tick}`} />}
         {screen === "settings" && <Settings state={state} />}
       </main>
       {!inSession && (
         <nav className="nav" aria-label="Sections">
-          {(["home", "progress", "settings"] as Screen[]).map((s) => (
+          {(["home", "words", "progress", "settings"] as Screen[]).map((s) => (
             <button key={s} onClick={() => setScreen(s)} aria-current={screen === s ? "page" : undefined}>
               <NavIcon screen={s} />
               {s[0].toUpperCase() + s.slice(1)}
@@ -632,6 +634,9 @@ function NavIcon({ screen }: { screen: Screen }) {
   const common = { className: "icon", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
   if (screen === "progress") {
     return <svg {...common}><path d="M4 19V10M10 19V5M16 19v-6M22 19H2" /></svg>;
+  }
+  if (screen === "words") {
+    return <svg {...common}><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z" /><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z" /></svg>;
   }
   if (screen === "settings") {
     return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" /></svg>;

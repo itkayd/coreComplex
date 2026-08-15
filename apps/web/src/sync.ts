@@ -9,8 +9,10 @@
  *
  * Four rules it keeps:
  *
- *   OFF BY DEFAULT. Nothing leaves the device until the learner turns it on in
- *   Settings, which matches the promise the app makes on that screen.
+ *   ON BY DEFAULT, ONE TAP TO STOP. Losing months of memory state to a cleared
+ *   browser is a likelier harm than a learning log sitting in the app's own
+ *   database — and only that log is ever sent. Settings says so plainly and
+ *   turns it off immediately.
  *
  *   LOCAL IS AUTHORITATIVE. Sync never blocks a session and never gates a task.
  *   Every failure is a no-op the learner does not have to care about.
@@ -50,10 +52,23 @@ export interface SyncStatus {
   detail: string;
 }
 
+/**
+ * Backup is ON unless the learner turned it off.
+ *
+ * It was opt-in at first, which sounds privacy-respecting and is actually the
+ * wrong default for what this stores: losing months of memory state to a cleared
+ * browser is a much more likely harm than a learning log sitting in the app's own
+ * database. Only the log is ever sent, deleting data deletes the backup, and the
+ * off switch is one tap away in Settings — so the safe default is on.
+ *
+ * If no database is configured the whole thing is inert regardless: the endpoint
+ * answers 503 and the app stays purely local.
+ */
 export function syncEnabled(): boolean {
   try {
-    return localStorage.getItem(PREF_KEY) === "true";
+    return localStorage.getItem(PREF_KEY) !== "false";
   } catch {
+    // No storage means no preference can be recorded either way; stay local.
     return false;
   }
 }
