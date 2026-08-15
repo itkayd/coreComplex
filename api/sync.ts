@@ -36,6 +36,20 @@
  *   DELETE /api/sync?learner=<id>
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+/*
+ * The one cross-file import in this directory, and it needs a note.
+ *
+ * Vercel compiles each `api/*.ts` to its own `.js` entrypoint rather than
+ * bundling the directory, so a `./auth.ts` specifier survives into the emitted
+ * JavaScript and resolves against a file that is not shipped — the deployment
+ * answers FUNCTION_INVOCATION_FAILED with ERR_MODULE_NOT_FOUND. `vercel.json`
+ * therefore lists `api/auth.ts` in this function's `includeFiles`, so the module
+ * is present at runtime and Node's own type stripping loads it.
+ *
+ * Duplicating the session check into this file would avoid the config, and would
+ * be much worse: two copies of the code that decides whether a request is the
+ * owner, free to drift apart. Security logic gets one implementation.
+ */
 import { OWNER, authenticate } from "./auth.ts";
 
 /** The table the migration creates. See supabase/migrations/. */

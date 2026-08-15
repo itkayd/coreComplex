@@ -5,6 +5,9 @@
   "installCommand": "npm ci",
   "framework": null,
   "github": { "silent": true },
+  "functions": {
+    "api/sync.ts": { "includeFiles": "api/auth.ts" }
+  },
   "headers": [
     {
       "source": "/assets/(.*)",
