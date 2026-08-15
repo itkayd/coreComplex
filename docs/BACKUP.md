@@ -1,10 +1,9 @@
-# Learning-log backup (Neon Postgres)
+# Learning-log backup (Supabase Postgres durable event backup)
 
-Optional, off by default, and deliberately small. The app is local-first: the
-kernel runs on the device, the event log is written locally before any UI
-success, and every session works with no network. This adds one thing — a
-durable copy of that log, so a cleared browser or a lost phone does not erase
-months of memory state.
+Optional and deliberately small. The app is local-first: the kernel runs on the
+device, the event log is written locally before any UI success, and every session
+works with no network. This adds one thing — a durable copy of that log, so a
+cleared browser or a lost phone does not erase months of memory state.
 
 ## Why the event log, and nothing else
 
@@ -16,58 +15,113 @@ and no new category of data.
 Not stored: audio, microphone input, content (the pack is public and
 content-addressed), analytics, or anything derived. The server never schedules,
 grades or computes a trace — `api/api.test.ts` asserts it imports no kernel or
-domain code and contains no scheduling vocabulary. If that ever changed there
-would be two things deciding what a learner knows, and the kernel would stop
-being the authority the whole design rests on.
+domain code, contains no scheduling vocabulary, and that the storage interface
+itself stays four dumb verbs (`stats`, `read`, `append`, `count`, `remove`). If
+that ever changed there would be two things deciding what a learner knows, and
+the kernel would stop being the authority the whole design rests on.
 
 ## Setting it up
 
-The connection string is a secret and is never committed. The repository is
-public; the value lives only in Vercel's encrypted environment variables.
+The Vercel ↔ Supabase Marketplace integration injects everything needed. There is
+**no password to copy by hand**, and nothing secret is ever committed — the
+repository is public and the values live only in Vercel's encrypted environment.
 
-1. Vercel → project → **Settings → Environment Variables**
-2. Add `DATABASE_URL` with the Neon pooled connection string, for all
-   environments (Production, Preview, Development)
-3. Redeploy
+The API reads:
 
-Locally, put it in a git-ignored `.env` (see `.env.example`).
+| Variable | Role |
+| --- | --- |
+| `SUPABASE_URL` | project endpoint (not a credential; falls back to `NEXT_PUBLIC_SUPABASE_URL`) |
+| `SUPABASE_SECRET_KEY` | server-side key, preferred |
+| `SUPABASE_SERVICE_ROLE_KEY` | legacy name, accepted as a fallback |
 
-No migration step is needed: the endpoint issues `CREATE TABLE IF NOT EXISTS` on
-every request, so the first call creates the schema.
+The publishable/anon key is **refused**, not merely deprioritised. Row Level
+Security is on with no public policy, so an anon key would give a deployment that
+looks configured, answers `200`, and silently stores nothing. A clear refusal
+beats a backup that is quietly a no-op.
+
+Locally, put the two values in a git-ignored `.env` (see `.env.example`).
+
+## Applying the migration
+
+The schema is a migration now, not something the API creates on every request.
+Runtime schema creation worked and was wrong: it cost a round trip on every call,
+and it hid the shape of the table in application code.
+
+`supabase/migrations/20260815000000_learning_events.sql`
+
+Either:
+
+```bash
+# Supabase CLI, against the linked project
+supabase link --project-ref <your-project-ref>
+supabase db push
+```
+
+or paste the file into **Supabase → SQL Editor → Run**. It is idempotent
+(`create table if not exists`, `create or replace function`), so re-running is
+safe.
 
 ```sql
-create table learning_events (
+create table if not exists public.learning_events (
   learner_id     text        not null,
   local_sequence integer     not null,
-  device_id      text        not null,
-  event_type     text        not null,
-  occurred_at    bigint      not null,
+  device_id      text        not null default '',
+  event_type     text        not null default '',
+  occurred_at    bigint      not null default 0,
   payload        jsonb       not null,
   received_at    timestamptz not null default now(),
   primary key (learner_id, local_sequence)
 );
 ```
 
-The primary key is what makes a re-send safe: writes use
-`ON CONFLICT DO NOTHING`, so sending an overlapping range can never duplicate a
-row. That mirrors the kernel's own command-level idempotency rule (ADR-0007) and
-means the client needs no cursor.
+The primary key is what makes a re-send safe: writes use ignore-duplicates
+resolution (`ON CONFLICT DO NOTHING`), so sending an overlapping range can never
+duplicate a row **and never rewrites an event already stored**. "Upsert" here
+means insert-or-skip, never insert-or-replace — an event is immutable. That
+mirrors the kernel's own command-level idempotency rule (ADR-0007) and means the
+client needs no cursor.
+
+No secondary index is created. Every query is
+`where learner_id = ? [and local_sequence > ?] order by local_sequence`, which the
+primary key already serves as a leading-column prefix scan.
+
+## Access control
+
+Row Level Security is enabled with **no policy at all**, and `anon` and
+`authenticated` have their grants revoked. That denies the table to every browser
+holding the publishable key — including for another learner's log. The only path
+in is the trusted server-side client in `api/sync.ts`, which holds the secret key
+and bypasses RLS.
+
+There is deliberately no per-learner policy. `learner_id` is an unauthenticated
+string a browser supplies, so a policy keyed on it would be no protection at all:
+anyone could name someone else's id. Direct browser access would need real
+authentication and a policy keyed on the authenticated user — a different piece
+of work, and not one this feature needs.
+
+The `learning_events_stats()` function that backs the health check is
+`security invoker` with `EXECUTE` granted only to `service_role`. It returns two
+integers and nothing that could identify anyone.
 
 ## API
 
 Same-origin (`/api/sync`), so the deployment's `connect-src 'self'` CSP is
-unchanged and no third party is involved.
+unchanged and no third party is reached from the browser. The browser never
+receives a Supabase URL or key.
 
 | Call | Result |
 | --- | --- |
-| `GET /api/sync?action=health` | `{ configured, reachable, events, learners }` |
-| `GET /api/sync?learner=<id>&since=<n>` | events after sequence `n`, oldest first, one page |
+| `GET /api/sync?action=health` | `{ ok, configured, reachable, events, learners, backend: "supabase" }` |
+| `GET /api/sync?learner=<id>&since=<n>` | events after sequence `n`, oldest first, one page of ≤ 500 |
 | `POST /api/sync` `{ learnerId, events }` | `{ stored, skipped, total }` |
 | `DELETE /api/sync?learner=<id>` | `{ deleted }` |
 
-A missing `DATABASE_URL` returns **503 with `configured: false`**. That is a
-supported state, not an error: the app hides the backup control and carries on
-entirely offline.
+Missing configuration returns **503 with `configured: false`** and the reason
+(which names the missing *variable*, never a value). That is a supported state,
+not an error: the app hides the backup control and carries on entirely offline.
+
+A database failure returns **502 with `reachable: false`** and a fixed message.
+Host names, roles and SQL never reach the client; they go to the function log.
 
 ## What it does not do
 
@@ -88,6 +142,6 @@ UI says so plainly rather than claiming success.
 
 ## Rotating the credential
 
-Neon → project → **Roles → Reset password**, then update `DATABASE_URL` in
-Vercel and redeploy. Do this if the connection string has ever been pasted
-somewhere it could be read — a chat log, an issue, a screenshot.
+Supabase → project → **Settings → API Keys**, roll the secret key. The Vercel
+integration re-injects it; redeploy to pick it up. Do this if the key has ever
+been pasted somewhere it could be read — a chat log, an issue, a screenshot.

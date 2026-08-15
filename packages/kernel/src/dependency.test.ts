@@ -121,6 +121,27 @@ test("the speech service depends only on contracts, never on the kernel", () => 
   }
 });
 
+test("THE REMOTE DATABASE IS INVISIBLE TO THE LEARNING BRAIN", () => {
+  // The backup is durable storage and nothing more. A learning package that
+  // could reach the database would be able to read or write memory state over
+  // the network, and the kernel would stop being the sole authority on what a
+  // learner knows (spec p.3). The browser must not reach it either: it holds no
+  // key, and same-origin /api/sync is what keeps `connect-src 'self'` true.
+  const database = /supabase|postgres|@neondatabase|pg-promise|knex|prisma|drizzle-orm|mysql/i;
+  const packages = [
+    ...["domain", "kernel", "content", "layers", "senses", "fsrs-adapter"].map((p) => join(root, "packages", p, "src")),
+    join(root, "apps", "web", "src"),
+    join(root, "apps", "service", "src"),
+  ];
+  for (const dir of packages) {
+    for (const file of tsFiles(dir)) {
+      for (const spec of imports(file)) {
+        assert.ok(!database.test(spec), `${file} must not import a database client ("${spec}")`);
+      }
+    }
+  }
+});
+
 test("no package declares a paid speech/AI SaaS dependency", () => {
   const paid = ["@google-cloud/text-to-speech", "microsoft-cognitiveservices-speech-sdk",
     "elevenlabs", "@aws-sdk/client-polly", "openai", "@azure/cognitiveservices-speech",

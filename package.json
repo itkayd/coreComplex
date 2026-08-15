@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Dyr Mandarin Lab \u2014 adaptive Chinese memory kernel. Headless brain first (spec Stages 0\u20131).",
+  "description": "Dyr Mandarin Lab — adaptive Chinese memory kernel. Headless brain first (spec Stages 0–1).",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -43,6 +43,6 @@
     "typescript": "5.9.2"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2"
+    "@supabase/supabase-js": "^2.112.3"
   }
 }

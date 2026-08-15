@@ -14,6 +14,17 @@ Nothing here requires a paid API, an account, or an API key.
 | react / react-dom | Plain body UI | [facebook/react](https://github.com/facebook/react) | 19.2.8 | MIT | yes | Spec p.25 names a React/TypeScript PWA | Any view layer; the kernel is headless |
 | dexie | IndexedDB wrapper for the event log | [dexie/Dexie.js](https://github.com/dexie/Dexie.js) | 4.4.5 | Apache-2.0 | yes | Spec p.32 #26; append-only event storage | Raw IndexedDB — the event model is ours, not Dexie's |
 
+## Server-only dependencies (never in the browser bundle)
+
+| Name | Purpose | Source | Version | Licence | Reason chosen | Replacement |
+| --- | --- | --- | --- | --- | --- | --- |
+| @supabase/supabase-js | Durable event-log backup from `api/sync.ts` | [supabase/supabase-js](https://github.com/supabase/supabase-js) | 2.112.3 | MIT | The deployment's database is Supabase, provisioned by the Vercel Marketplace integration; the official client is the supported path to it | Any Postgres access behind the `EventStore` interface — the API depends on four verbs, not on Supabase |
+
+Loaded only by the Vercel serverless function. It holds the privileged key, so a
+test (`api/api.test.ts`) asserts no client file imports it and that no client
+file names `SUPABASE_SECRET_KEY` or `service_role`. The browser reaches the
+database only through same-origin `/api/sync`.
+
 ## Build / dev dependencies (not shipped)
 
 | Name | Purpose | Source | Version | Licence | Reason | Replacement |

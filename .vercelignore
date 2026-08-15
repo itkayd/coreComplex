@@ -10,6 +10,8 @@ api/*.test.ts
 # Not needed to build or serve the app.
 /docs
 /sources
+# Database migrations are applied to Supabase directly, never by the deployment.
+/supabase
 /artifacts
 /apps/web/e2e
 /apps/web/dist-fixture

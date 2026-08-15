@@ -1,11 +1,11 @@
 /**
- * Durable backup of the learning event log (Neon Postgres).
+ * Durable backup of the learning event log (Supabase Postgres).
  *
  * WHAT THIS IS NOT: a brain. Dyr's kernel is the only thing that decides
  * anything about memory (spec p.3 "TaskContracts in; AttemptEnvelopes back;
  * LearningFacts out"), and it runs on the device. This endpoint stores opaque
  * rows and hands them back. It never schedules, never grades, never derives a
- * trace, and never inspects an event beyond the few fields it indexes on. A
+ * trace, and never inspects an event beyond the few columns it indexes on. A
  * test asserts that: `api/api.test.ts`.
  *
  * WHY THE EVENT LOG IS THE RIGHT THING TO STORE. It is append-only, ordered and
@@ -16,11 +16,18 @@
  * (the pack is public and content-addressed), no analytics.
  *
  * IDEMPOTENCY comes from the primary key `(learner_id, local_sequence)` plus
- * `ON CONFLICT DO NOTHING`, matching the kernel's own command-level idempotency
- * rule (ADR-0007): re-sending a batch can never double-write.
+ * ignore-duplicates resolution — PostgREST's `ON CONFLICT DO NOTHING` — matching
+ * the kernel's own command-level idempotency rule (ADR-0007): re-sending a batch
+ * can never double-write, and never overwrites an event already stored. An event
+ * is immutable; "upsert" here means insert-or-skip, never insert-or-replace.
  *
- * The app stays local-first. Sync is best-effort and off by default; every
- * failure here is a no-op for the learner, who keeps working offline.
+ * THE STORE IS AN INTERFACE, and deliberately a boring one. `EventStore` can
+ * append, read, count and delete. There is no verb in it that could schedule
+ * anything, which is the architectural rule expressed as a type. It also makes
+ * the routing testable without a live database — see `api/api.test.ts`.
+ *
+ * The app stays local-first. Sync is best-effort; every failure here is a no-op
+ * for the learner, who keeps working offline.
  *
  * Routes (one file, so Vercel's builder has no cross-module resolution to do):
  *   GET    /api/sync?action=health
@@ -28,21 +35,10 @@
  *   POST   /api/sync            { learnerId, events: [...] }
  *   DELETE /api/sync?learner=<id>
  */
-import { neon } from "@neondatabase/serverless";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-/** Created on demand; `IF NOT EXISTS` makes every request safe to be the first. */
-export const SCHEMA_SQL = `
-  create table if not exists learning_events (
-    learner_id     text        not null,
-    local_sequence integer     not null,
-    device_id      text        not null default '',
-    event_type     text        not null default '',
-    occurred_at    bigint      not null default 0,
-    payload        jsonb       not null,
-    received_at    timestamptz not null default now(),
-    primary key (learner_id, local_sequence)
-  )
-`;
+/** The table the migration creates. See supabase/migrations/. */
+export const TABLE = "learning_events";
 
 /** Guard rails on a client-supplied batch. Pure, so it is unit-tested. */
 export interface EventRow {
@@ -106,6 +102,168 @@ export function validLearnerId(value: unknown): value is string {
 }
 
 // ---------------------------------------------------------------------------
+// The storage contract.
+
+/**
+ * Everything this API is allowed to do to stored events.
+ *
+ * Four verbs, none of which can decide anything. Widening this interface is how
+ * a "backup" quietly turns into a second learning brain, so it is meant to stay
+ * this shape.
+ */
+export interface EventStore {
+  /** Deployment-wide totals, for the health check. */
+  stats(): Promise<{ events: number; learners: number }>;
+  /** One page of a learner's log, oldest first, for replay. */
+  read(learnerId: string, since: number, limit: number): Promise<unknown[]>;
+  /** Append, skipping anything already stored. Returns how many were new. */
+  append(learnerId: string, rows: readonly EventRow[]): Promise<number>;
+  /** How many events this learner has stored. */
+  count(learnerId: string): Promise<number>;
+  /** Erase this learner's log entirely. Returns how many rows went. */
+  remove(learnerId: string): Promise<number>;
+}
+
+// ---------------------------------------------------------------------------
+// Configuration.
+
+export interface SupabaseConfig {
+  url: string;
+  key: string;
+  /** Which environment variable the key came from, for diagnostics only. */
+  keySource: string;
+}
+
+export type ConfigResult =
+  | { ok: true; config: SupabaseConfig }
+  | { ok: false; reason: string };
+
+/**
+ * Resolve the server-side Supabase credentials.
+ *
+ * The Vercel ↔ Supabase Marketplace integration injects these, so there is
+ * normally nothing to set by hand. Two rules are enforced rather than assumed:
+ *
+ * A PRIVILEGED KEY, OR NOTHING. The publishable/anon key is designed to be seen
+ * by browsers and is subject to Row Level Security, which the migration turns on
+ * with no public policy. Accepting one here would produce a deployment that
+ * looks configured, returns success, and silently stores nothing. Refusing it
+ * with a clear reason is far better than a backup that is quietly a no-op.
+ *
+ * NOTHING PUBLIC CARRIES THE KEY. `NEXT_PUBLIC_*` variables are, by definition,
+ * exposed to client bundles, so none is ever read as a credential. The project
+ * URL is not a credential — it appears in every request — so it may fall back to
+ * the public variable when the integration only set that one.
+ */
+export function resolveConfig(env: Record<string, string | undefined> = process.env): ConfigResult {
+  const url = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
+  // Modern secret key first; the legacy service-role key is a compatibility
+  // fallback for projects the integration provisioned earlier.
+  const keySource = env.SUPABASE_SECRET_KEY ? "SUPABASE_SECRET_KEY"
+    : env.SUPABASE_SERVICE_ROLE_KEY ? "SUPABASE_SERVICE_ROLE_KEY"
+      : undefined;
+  const key = keySource ? env[keySource] : undefined;
+
+  if (!url) return { ok: false, reason: "SUPABASE_URL is not set for this deployment" };
+  if (!key || !keySource) {
+    return { ok: false, reason: "no server-side Supabase key is set (SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY)" };
+  }
+  return { ok: true, config: { url, key, keySource } };
+}
+
+/**
+ * A server-side client: no session, no token refresh, no storage.
+ *
+ * `persistSession` and `autoRefreshToken` are off because this runs in a
+ * stateless function — a client that tried to persist a session would be writing
+ * to nothing and refreshing a token nobody holds.
+ */
+export function supabaseStore(config: SupabaseConfig): EventStore {
+  const client = createClient(config.url, config.key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { headers: { "x-application-name": "dyr-sync" } },
+  });
+  return storeFor(client);
+}
+
+/** Split out so tests can drive it with a stub client if they ever need to. */
+export function storeFor(client: SupabaseClient): EventStore {
+  const fail = (error: { message?: string } | null, what: string): void => {
+    // The message is logged, never returned: it can name columns, roles and
+    // policies, none of which is the client's business.
+    if (error) throw new Error(`${what} failed: ${error.message ?? "unknown"}`);
+  };
+
+  return {
+    async stats() {
+      // A distinct-learner count is not expressible in PostgREST, so it comes
+      // from the read-only function the migration defines. Its EXECUTE grant is
+      // service-role only, so it cannot be called from a browser.
+      const { data, error } = await client.rpc("learning_events_stats");
+      fail(error, "stats");
+      const row = (Array.isArray(data) ? data[0] : data) as { events?: number; learners?: number } | null;
+      return { events: Number(row?.events ?? 0), learners: Number(row?.learners ?? 0) };
+    },
+
+    async read(learnerId, since, limit) {
+      const { data, error } = await client
+        .from(TABLE)
+        .select("payload")
+        .eq("learner_id", learnerId)
+        .gt("local_sequence", since)
+        // Replay depends on this order. It is asserted, not assumed.
+        .order("local_sequence", { ascending: true })
+        .limit(limit);
+      fail(error, "read");
+      return (data ?? []).map((r) => (r as { payload: unknown }).payload);
+    },
+
+    async append(learnerId, rows) {
+      // `ignoreDuplicates` sends Prefer: resolution=ignore-duplicates, which is
+      // ON CONFLICT DO NOTHING. Not merge-duplicates: a stored event is
+      // immutable and a re-send must never rewrite it.
+      const { data, error } = await client
+        .from(TABLE)
+        .upsert(
+          rows.map((r) => ({
+            learner_id: learnerId,
+            local_sequence: r.localSequence,
+            device_id: r.deviceId,
+            event_type: r.eventType,
+            occurred_at: r.occurredAt,
+            payload: r.payload,
+          })),
+          { onConflict: "learner_id,local_sequence", ignoreDuplicates: true },
+        )
+        .select("local_sequence");
+      fail(error, "append");
+      // Only genuinely new rows come back, so this IS the stored count.
+      return (data ?? []).length;
+    },
+
+    async count(learnerId) {
+      const { count, error } = await client
+        .from(TABLE)
+        .select("local_sequence", { count: "exact", head: true })
+        .eq("learner_id", learnerId);
+      fail(error, "count");
+      return count ?? 0;
+    },
+
+    async remove(learnerId) {
+      const { data, error } = await client
+        .from(TABLE)
+        .delete()
+        .eq("learner_id", learnerId)
+        .select("local_sequence");
+      fail(error, "delete");
+      return (data ?? []).length;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Routing.
 
 type Req = { method?: string; url?: string; body?: unknown; headers: Record<string, string | string[] | undefined> };
 type Res = {
@@ -119,28 +277,23 @@ const json = (res: Res, code: number, body: unknown) => {
   res.status(code).json(body);
 };
 
-export default async function handler(req: Req, res: Res): Promise<void> {
+export const BACKEND = "supabase";
+
+/**
+ * The whole API, given a store.
+ *
+ * Separated from `handler` so the contract can be tested end to end against an
+ * in-memory store: idempotency, ordering, validation and the local-first
+ * behaviour on a database failure are all properties of THIS function, and none
+ * of them should need a live Postgres to verify.
+ */
+export async function handleSync(req: Req, res: Res, store: EventStore): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
-  const connectionString = process.env.DATABASE_URL;
-
-  if (!connectionString) {
-    // A missing database is a configuration state, not a crash. The app treats
-    // it as "sync unavailable" and carries on entirely offline.
-    json(res, 503, { ok: false, configured: false, error: "DATABASE_URL is not set for this deployment" });
-    return;
-  }
-
-  const sql = neon(connectionString);
 
   try {
-    await sql(SCHEMA_SQL);
-
     if (req.method === "GET" && url.searchParams.get("action") === "health") {
-      const [{ count }] = (await sql("select count(*)::int as count from learning_events")) as { count: number }[];
-      const [{ learners }] = (await sql(
-        "select count(distinct learner_id)::int as learners from learning_events",
-      )) as { learners: number }[];
-      json(res, 200, { ok: true, configured: true, reachable: true, events: count, learners });
+      const { events, learners } = await store.stats();
+      json(res, 200, { ok: true, configured: true, reachable: true, events, learners, backend: BACKEND });
       return;
     }
 
@@ -150,14 +303,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       if (!validLearnerId(learnerParam)) { json(res, 400, { ok: false, error: "invalid learner" }); return; }
       const sinceRaw = Number(url.searchParams.get("since") ?? "-1");
       const since = Number.isFinite(sinceRaw) ? Math.trunc(sinceRaw) : -1;
-      const rows = (await sql(
-        `select payload from learning_events
-          where learner_id = $1 and local_sequence > $2
-          order by local_sequence asc
-          limit $3`,
-        [learnerParam, since, MAX_BATCH],
-      )) as { payload: unknown }[];
-      json(res, 200, { ok: true, events: rows.map((r) => r.payload), count: rows.length });
+      const events = await store.read(learnerParam, since, MAX_BATCH);
+      json(res, 200, { ok: true, events, count: events.length });
       return;
     }
 
@@ -165,34 +312,21 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const body = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) as
         { learnerId?: unknown; events?: unknown } | undefined;
       if (!validLearnerId(body?.learnerId)) { json(res, 400, { ok: false, error: "invalid learnerId" }); return; }
+      const learnerId = body!.learnerId as string;
 
       const batch = validateBatch(body?.events);
       if (!batch.ok) { json(res, 400, { ok: false, error: "invalid events", rejected: batch.rejected }); return; }
-      if (batch.rows.length === 0) { json(res, 200, { ok: true, stored: 0, total: await total(sql, body!.learnerId as string) }); return; }
+      if (batch.rows.length === 0) {
+        json(res, 200, { ok: true, stored: 0, skipped: 0, total: await store.count(learnerId) });
+        return;
+      }
 
-      // One statement, unnested arrays: a batch is written atomically, and
-      // ON CONFLICT DO NOTHING makes a re-send a no-op rather than a duplicate.
-      const result = (await sql(
-        `insert into learning_events (learner_id, local_sequence, device_id, event_type, occurred_at, payload)
-         select $1, s, d, t, o, p
-           from unnest($2::int[], $3::text[], $4::text[], $5::bigint[], $6::jsonb[]) as u(s, d, t, o, p)
-         on conflict (learner_id, local_sequence) do nothing
-         returning local_sequence`,
-        [
-          body!.learnerId as string,
-          batch.rows.map((r) => r.localSequence),
-          batch.rows.map((r) => r.deviceId),
-          batch.rows.map((r) => r.eventType),
-          batch.rows.map((r) => r.occurredAt),
-          batch.rows.map((r) => JSON.stringify(r.payload)),
-        ],
-      )) as { local_sequence: number }[];
-
+      const stored = await store.append(learnerId, batch.rows);
       json(res, 200, {
         ok: true,
-        stored: result.length,
-        skipped: batch.rows.length - result.length,
-        total: await total(sql, body!.learnerId as string),
+        stored,
+        skipped: batch.rows.length - stored,
+        total: await store.count(learnerId),
       });
       return;
     }
@@ -200,28 +334,31 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     if (req.method === "DELETE") {
       if (!validLearnerId(learnerParam)) { json(res, 400, { ok: false, error: "invalid learner" }); return; }
       // Deletion is real and immediate — the spec requires learner data to be
-      // deletable, and a backup that outlives the delete would break that.
-      const deleted = (await sql(
-        "delete from learning_events where learner_id = $1 returning local_sequence",
-        [learnerParam],
-      )) as unknown[];
-      json(res, 200, { ok: true, deleted: deleted.length });
+      // deletable, and a backup that outlived the delete would break that.
+      json(res, 200, { ok: true, deleted: await store.remove(learnerParam) });
       return;
     }
 
     res.setHeader("Allow", "GET, POST, DELETE");
     json(res, 405, { ok: false, error: `method ${req.method} not allowed` });
   } catch (error) {
-    // Never leak the connection string or driver internals to the client.
-    console.error("sync failed:", error);
-    json(res, 502, { ok: false, configured: true, reachable: false, error: "the sync database could not be reached" });
+    // Never leak keys, SQL, or driver internals to the client. The learner is
+    // local-first: a failure here costs them nothing they can see.
+    console.error("sync failed:", error instanceof Error ? error.message : error);
+    json(res, 502, {
+      ok: false, configured: true, reachable: false, backend: BACKEND,
+      error: "the sync database could not be reached",
+    });
   }
 }
 
-async function total(sql: ReturnType<typeof neon>, learnerId: string): Promise<number> {
-  const [{ count }] = (await sql(
-    "select count(*)::int as count from learning_events where learner_id = $1",
-    [learnerId],
-  )) as { count: number }[];
-  return count;
+export default async function handler(req: Req, res: Res): Promise<void> {
+  const config = resolveConfig();
+  if (!config.ok) {
+    // Missing configuration is a supported state, not a crash: the app hides the
+    // backup control and carries on entirely offline.
+    json(res, 503, { ok: false, configured: false, backend: BACKEND, error: config.reason });
+    return;
+  }
+  await handleSync(req, res, supabaseStore(config.config));
 }

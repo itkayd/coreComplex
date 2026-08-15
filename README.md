@@ -189,6 +189,18 @@ pack are stored — no game or profile store. On startup the kernel is rebuilt b
 replaying that log, so a reload resumes exactly where you were, with pending
 repairs intact and no penalty.
 
+**Durable event backup (Supabase Postgres).** The same log is optionally copied
+to the project's own database through same-origin `/api/sync`, so a cleared
+browser or a lost phone does not erase months of memory state. The database is
+*only durable storage*: it stores opaque, immutable rows and hands them back in
+order, and the storage interface has four verbs — none of which can decide
+anything. All memory state, FSRS, scheduling, grading, evidence, progression and
+planning stay on the device, where the kernel is the sole authority. Idempotency
+comes from the primary key `(learner_id, local_sequence)`, so a re-sent batch is
+skipped rather than duplicated and a stored event is never rewritten. Row Level
+Security is on with no public policy, so no browser can reach the table directly
+— see `docs/BACKUP.md` and `supabase/migrations/`.
+
 **Pack integrity.** The PWA refuses a pack that does not validate structurally
 *and* still hash to its declared `contentHash`. The digest definition is shared
 by the Node build and the browser verifier, so they cannot drift. Tampering,

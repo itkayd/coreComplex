@@ -26,7 +26,10 @@
  *   Settings screen would be lying.
  *
  * Same-origin by construction (`/api/sync`), so the deployment's
- * `connect-src 'self'` CSP stays intact and no third party is involved.
+ * `connect-src 'self'` CSP stays intact and no third party is reached from the
+ * browser. The storage backend (Supabase Postgres) is entirely a server-side
+ * detail: this file holds no project URL and no key, and could not reach the
+ * database directly even if it wanted to.
  */
 import type { EventEnvelope } from "@dyr/domain";
 
@@ -95,10 +98,11 @@ async function call(path: string, init?: RequestInit): Promise<{ ok: boolean; st
  * Is a database configured for this deployment at all?
  *
  * Only an explicit healthy answer counts as configured. A 503 means the endpoint
- * exists but has no `DATABASE_URL`; a 404, a network failure or any other status
- * means there is no working backup here either — for instance a static preview
- * with no functions at all. Treating "no answer" as "configured" would offer the
- * learner a control that silently does nothing.
+ * exists but has no Supabase credentials; a 502 means it has them and the
+ * database is unreachable; a 404, a network failure or any other status means
+ * there is no working backup here either — for instance a static preview with no
+ * functions at all. Treating "no answer" as "configured" would offer the learner
+ * a control that silently does nothing.
  */
 export async function health(): Promise<{ configured: boolean; reachable: boolean; events: number }> {
   const { ok, body } = await call("?action=health");
