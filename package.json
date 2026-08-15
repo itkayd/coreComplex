@@ -13,9 +13,13 @@
   },
   "scripts": {
     "test": "node --test --experimental-strip-types \"packages/**/*.test.ts\" \"fixtures/**/*.test.ts\"",
-    "sim": "node fixtures/sim/simulate.ts"
+    "sim": "node fixtures/sim/simulate.ts",
+    "matrix": "node fixtures/sim/matrix.ts",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "fast-check": "4.9.0"
+    "@types/node": "22.10.5",
+    "fast-check": "4.9.0",
+    "typescript": "5.9.2"
   }
 }

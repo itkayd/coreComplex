@@ -97,13 +97,17 @@ function ratingToGrade(rating: Rating): Grade {
 }
 
 export function createFsrsAdapter(config: FsrsConfig = {}): FsrsAdapter {
+  // ts-fsrs types its steps as template-literal `${number}m|h|d`. We accept
+  // plain strings at the domain-neutral boundary and hand them to the library
+  // here; the cast is the single point where the library's shape is honoured.
+  type Steps = FSRSParameters["learning_steps"];
   const params: FSRSParameters = generatorParameters({
     request_retention: config.requestRetention ?? 0.9,
     maximum_interval: config.maximumIntervalDays ?? 36500,
     enable_fuzz: false, // determinism (ADR-0001)
     enable_short_term: true, // short-term repair (ADR-0003)
-    ...(config.learningSteps ? { learning_steps: config.learningSteps } : {}),
-    ...(config.relearningSteps ? { relearning_steps: config.relearningSteps } : {}),
+    ...(config.learningSteps ? { learning_steps: config.learningSteps as Steps } : {}),
+    ...(config.relearningSteps ? { relearning_steps: config.relearningSteps as Steps } : {}),
     ...(config.weights ? { w: config.weights } : {}),
   });
   const engine: FSRS = fsrs(params);

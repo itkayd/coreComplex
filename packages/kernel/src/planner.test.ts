@@ -65,7 +65,7 @@ test("confusable lexemes are never paired in one session", () => {
   }
   h.clock.advanceDays(2);
   const plan = h.kernel.planSession({ budgetMinutes: 15 });
-  const lexemes = new Set(plan.tasks.map((t) => t.lexeme));
+  const lexemes = new Set(plan.tasks.map((t) => String(t.lexeme)));
   const paired = lexemes.has("be.v.01") && lexemes.has("matter.n.01");
   assert.equal(paired, false, "confusable pair 是/事 must not co-occur");
 });
