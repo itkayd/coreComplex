@@ -13,3 +13,10 @@ pretrained_models/
 *.onnx
 *.safetensors
 *.ckpt
+
+# Locally supplied source files: structure and manifests are tracked, bytes are not.
+sources/inbox/**/*
+!sources/inbox/**/
+!sources/inbox/**/.gitkeep
+!sources/inbox/**/manifest.json
+!sources/inbox/**/candidates.json

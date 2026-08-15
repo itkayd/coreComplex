@@ -37,7 +37,8 @@
   "include": [
     "packages/**/*.ts",
     "fixtures/**/*.ts",
-    "apps/service/**/*.ts"
+    "apps/service/**/*.ts",
+    "scripts/**/*.ts"
   ],
   "exclude": [
     "apps/web",
