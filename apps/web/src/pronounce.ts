@@ -1,20 +1,30 @@
 /**
- * "Hear it" — one entry point, two synthetic sources, one unbreakable rule.
+ * "Hear it" — one entry point, three synthetic sources, one unbreakable rule.
  *
- *                   ┌── local service (CosyVoice)  better audio, needs a machine
- *   pronounce(text) ┤
- *                   └── device voice (Web Speech)  always there, works offline
+ *   pronounce(text)
+ *     │
+ *     ├─ local CosyVoice running?  ── yes ──▶  CosyVoice          best, needs a machine
+ *     │        no
+ *     ├─ device Mandarin voice?    ── yes ──▶  speechSynthesis    free, offline, everywhere
+ *     │        no
+ *     └─ cloud TTS configured?     ── yes ──▶  /api/speech        generated audio
+ *              no
+ *              ▼
+ *          no audio, said plainly
  *
- * WHY A ROUTER RATHER THAN A CHOICE. The two sources are good at different
- * things and neither dominates. CosyVoice sounds far better and returns
- * content-addressed bytes that cache under a version-aware id, but it needs
- * hardware the learner's phone does not have. The device voice is mediocre but
- * universal, free, offline and instant. Preferring the service when it is
- * configured and reachable, and falling back to the device otherwise, means the
- * app makes the best sound it can wherever it is running — and, crucially, makes
- * SOME sound everywhere, which the deployed build previously did not.
+ * WHY A CHAIN RATHER THAN A CHOICE. The tiers are good at different things and
+ * none dominates. CosyVoice sounds far better and returns content-addressed
+ * bytes, but needs hardware a phone does not have. The device voice is mediocre
+ * but universal, free, offline and instant — and is what almost every learner
+ * actually gets. The cloud tier exists for the device that has neither: a
+ * locked-down Android with no Chinese voice pack, a desktop Linux browser with
+ * no zh-CN voice. On those, the choice is this or silence.
  *
- * THE RULE BOTH SOURCES OBEY. Everything here is SYNTHETIC (spec p.21). It is:
+ * ORDER IS DELIBERATE. Quality first, then the offline-capable tier, then the
+ * one that costs a request. Putting the cloud tier higher would spend network on
+ * devices that already had a perfectly good voice sitting idle.
+ *
+ * THE RULE ALL THREE OBEY. Everything here is SYNTHETIC (spec p.21). It is:
  *   - always labelled as a generated voice, never as a pronunciation reference;
  *   - never the cue for an audio-primary task — `CanonicalAudioCue` is the only
  *     thing that may speak before an answer, and it plays verified human bytes
@@ -32,9 +42,10 @@ import {
   deviceVoiceStatus,
   prepareDeviceUtterance,
 } from "./device-voice.ts";
+import { CloudVoiceUnavailable, cloudVoiceStatus, fetchCloudClip, resetCloudVoiceCache } from "./cloud-voice.ts";
 import { clampRate } from "./voice-select.ts";
 
-export type PronunciationSourceId = "local-service" | "device-voice";
+export type PronunciationSourceId = "local-service" | "device-voice" | "cloud-voice";
 
 export interface Pronunciation {
   source: PronunciationSourceId;
@@ -81,6 +92,7 @@ export function audioReadiness(): Promise<AudioReadiness> {
 
 export function resetAudioReadiness(): void {
   readiness = undefined;
+  resetCloudVoiceCache();
 }
 
 async function probe(): Promise<AudioReadiness> {
@@ -95,6 +107,12 @@ async function probe(): Promise<AudioReadiness> {
   const device = await deviceVoiceStatus();
   if (device.available) {
     return { available: true, source: "device-voice", description: device.description };
+  }
+  // Last tier: a device with no voice of its own. Asking the server costs one
+  // request and is the difference between audio and silence on such a device.
+  const cloud = await cloudVoiceStatus();
+  if (cloud.available) {
+    return { available: true, source: "cloud-voice", description: "generated on the server" };
   }
   return { available: false, description: device.description };
 }
@@ -134,11 +152,54 @@ export async function pronounce(
       release: () => {},
     };
   } catch (error) {
-    if (error instanceof DeviceVoiceUnavailable) {
-      throw new PronounceError("no_source", error.message);
+    // A device with no Mandarin voice is precisely what the cloud tier is for.
+    if (!(error instanceof DeviceVoiceUnavailable)) {
+      throw new PronounceError("failed", (error as Error).message);
+    }
+  }
+
+  try {
+    return await fromCloud(trimmed, speed);
+  } catch (error) {
+    if (error instanceof CloudVoiceUnavailable) {
+      // Every tier has now declined. The UI treats this as "no audio here",
+      // which is honest and costs the learner nothing but sound.
+      throw new PronounceError("no_source", "this device has no Mandarin voice, and none is configured on the server");
     }
     throw new PronounceError("failed", (error as Error).message);
   }
+}
+
+/**
+ * The cloud tier, played like any other clip.
+ *
+ * Speed is applied with `playbackRate` rather than asked of the upstream:
+ * browsers preserve pitch, every provider would want a different parameter for
+ * it, and one cached clip then serves every speed instead of one per rate.
+ */
+async function fromCloud(text: string, speed: number): Promise<Pronunciation> {
+  const clip = await fetchCloudClip(text);
+  const element = new Audio(clip.objectUrl);
+  element.playbackRate = speed;
+  let released = false;
+
+  return {
+    source: "cloud-voice",
+    description: clip.fromCache ? "generated on the server (cached here)" : "generated on the server",
+    play: () => new Promise<void>((resolve, reject) => {
+      element.currentTime = 0;
+      element.onended = () => resolve();
+      element.onerror = () => reject(new PronounceError("failed", "could not play that clip"));
+      element.play().catch(() => reject(new PronounceError("failed", "playback was refused")));
+    }),
+    stop: () => element.pause(),
+    release: () => {
+      if (released) return;
+      released = true;
+      element.pause();
+      URL.revokeObjectURL(clip.objectUrl);
+    },
+  };
 }
 
 async function fromService(text: string, speed: number): Promise<Pronunciation> {

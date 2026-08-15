@@ -706,10 +706,10 @@ function Settings({ state, account, onAccountChange }: {
         )}
         {audio && !audio.available && (
           <p className="small muted" style={{ marginTop: 10, marginBottom: 0 }}>
-            This browser has no Mandarin voice installed, so &ldquo;Hear it&rdquo; is unavailable.
-            On Android add a Chinese voice under Settings &rarr; Language &amp; input &rarr;
-            Text-to-speech; on desktop Linux, install a zh-CN speech-dispatcher voice. Everything
-            else works without it.
+            Nothing on this device or this deployment can speak Mandarin, so &ldquo;Hear it&rdquo; is
+            unavailable. On Android add a Chinese voice under Settings &rarr; Language &amp; input
+            &rarr; Text-to-speech; on desktop Linux, install a zh-CN speech-dispatcher voice.
+            Everything else works without it.
           </p>
         )}
         <button type="button" style={{ marginTop: 12 }}

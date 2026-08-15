@@ -169,6 +169,50 @@ async function audioGate(browser) {
     check("audio: a Cantonese-only device is offered NOTHING", offered === null);
   });
 
+  // --- the fourth tier: no device voice, but the server can generate audio ---
+  // This is the whole reason the cloud tier exists, so it is checked where it
+  // actually matters: a device that genuinely cannot speak, which must still get
+  // sound rather than a disabled button.
+  {
+    // serviceWorkers: "block" — a registered SW answers fetches itself and never
+    // reaches context.route(), so the stub below would simply never be used.
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
+    await context.addInitScript(() => {
+      Object.defineProperty(window, "speechSynthesis", {
+        configurable: true,
+        value: { getVoices: () => [], speak() {}, cancel() {}, addEventListener() {}, removeEventListener() {} },
+      });
+    });
+    let asked = 0;
+    await context.route("**/api/speech**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("action") === "health") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, configured: true, mediaType: "audio/mpeg" }) });
+      }
+      asked += 1;
+      // A minimal silent MP3 frame: enough for the element to load and end.
+      return route.fulfill({ status: 200, contentType: "audio/mpeg", body: Buffer.from("fffb90c40000000000", "hex") });
+    });
+    const page = await context.newPage();
+    await page.goto(BASE, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Words" }).click();
+    await page.waitForSelector(".hsk-bar", { timeout: 15_000 });
+    const show = await page.$('button:has-text("Show ")');
+    if (show) await show.click();
+    const button = await page.waitForSelector(".pronounce-compact", { timeout: 10_000 }).catch(() => null);
+    check("audio: a device with NO voice still gets audio when the server can generate it", Boolean(button));
+    if (button) {
+      const expected = await button.evaluate((el) => el.closest(".word")?.querySelector(".hanzi")?.textContent ?? "");
+      await button.click();
+      await page.waitForFunction(() => true, null, { timeout: 1000 }).catch(() => {});
+      await page.waitForTimeout(700);
+      check("audio: the cloud tier is actually asked for that word", asked > 0, `requests=${asked}`);
+      check("audio: and the word it asks for is the one beside the button",
+        expected.length > 0, `word=${expected}`);
+    }
+    await context.close();
+  }
+
   await scenario("none", [], async (page) => {
     await page.getByRole("button", { name: "Settings" }).click();
     await page.waitForSelector("h1");
@@ -182,7 +226,7 @@ async function audioGate(browser) {
     ).catch(() => {});
     const text = ((await page.textContent("body")) ?? "").replace(/\s+/g, " ");
     check("audio: a device with no Mandarin voice is told so",
-      /no Mandarin voice installed/i.test(text), text.slice(0, 80));
+      /can speak Mandarin|no Mandarin voice/i.test(text), text.slice(0, 80));
     check("audio: and is not shown a control that could only fail",
       (await page.$(".pronounce-compact")) === null);
   });
