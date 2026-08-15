@@ -1,0 +1,45 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build:web",
+  "outputDirectory": "apps/web/dist",
+  "installCommand": "npm ci",
+  "framework": null,
+  "github": { "silent": true },
+  "headers": [
+    {
+      "comment": "Vite fingerprints these filenames, so the bytes behind a URL never change.",
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "comment": "The service worker decides what is cached; it must never be cached itself, or a stale worker pins an old app forever.",
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
+      ]
+    },
+    {
+      "comment": "The pack lives at a stable URL but its contents change with each release, and the app verifies its hash on load. Revalidate rather than serve a stale pack the integrity check would then reject.",
+      "source": "/packs/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    },
+    {
+      "comment": "Canonical audio is content-addressed by sha256, so a URL is immutable by construction.",
+      "source": "/packs/audio/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        {
+          "comment": "The app is local-first: it talks to no third party, so nothing needs to be reachable off-origin.",
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; img-src 'self' data:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        }
+      ]
+    }
+  ]
+}
