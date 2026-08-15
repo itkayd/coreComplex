@@ -12,13 +12,14 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test --experimental-strip-types \"packages/**/*.test.ts\" \"fixtures/**/*.test.ts\"",
+    "test": "node --test --experimental-strip-types \"packages/**/*.test.ts\" \"fixtures/**/*.test.ts\" \"apps/service/**/*.test.ts\"",
     "sim": "node fixtures/sim/simulate.ts",
     "matrix": "node fixtures/sim/matrix.ts",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspace=@dyr/web",
     "build:pack": "node packages/content/bin/build-pack.ts",
     "build:web": "node packages/content/bin/build-pack.ts apps/web/public/packs && npm run build --workspace=@dyr/web",
-    "audio:qa": "node packages/content/bin/audio-qa.ts"
+    "audio:qa": "node packages/content/bin/audio-qa.ts",
+    "speech": "node apps/service/src/index.ts"
   },
   "devDependencies": {
     "@types/node": "22.10.5",

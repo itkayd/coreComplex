@@ -65,3 +65,7 @@ export function passesCanonicalAudioGate(c: CanonicalAudioCheck): boolean {
     c.licenceAndConsentClear
   );
 }
+
+// Synthetic speech (CosyVoice et al.) — a labelled FALLBACK that can never be
+// canonical. See synthetic-speech.ts for the guarantee.
+export * from "./synthetic-speech.ts";

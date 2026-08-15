@@ -1,0 +1,15 @@
+{
+  "name": "@dyr/service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "node src/index.ts",
+    "typecheck": "tsc -p ../../tsconfig.json"
+  },
+  "dependencies": {
+    "@dyr/senses": "1.0.0",
+    "@dyr/domain": "1.0.0"
+  }
+}

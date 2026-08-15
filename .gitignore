@@ -6,3 +6,10 @@ coverage/
 packs/
 apps/web/dist/
 apps/web/public/packs/
+models/
+pretrained_models/
+.cache/
+*.pt
+*.onnx
+*.safetensors
+*.ckpt

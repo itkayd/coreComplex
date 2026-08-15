@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SKILLS, type Skill, type TaskContract } from "@dyr/domain";
 import type { Plan, SubmitResult } from "@dyr/kernel";
+import { SyntheticAudioButton } from "./SyntheticAudioButton.tsx";
 import {
   MODE_MINUTES,
   SKILL_LABEL,
@@ -208,6 +209,12 @@ function Result({ result, task, expected, onNext }: {
           <span lang="zh-CN" style={{ fontSize: 24 }}>{task.cue}</span>
         </p>
         <p className="muted" style={{ margin: 0 }}>{expected}</p>
+      </div>
+
+      {/* Synthetic playback lives here, AFTER the answer, so it can never
+          become a listening cue or count as canonical pronunciation. */}
+      <div className="card">
+        <SyntheticAudioButton text={task.cue} />
       </div>
 
       <div className="card">

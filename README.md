@@ -87,6 +87,7 @@ npm run matrix    # seeded 9-profile 365-day simulation matrix report
 # Stage 2 — content pack and the plain body
 npm run build:pack               # build the immutable, signed Core 60 artefact
 npm run audio:qa -- <clipDir>    # screen candidate recordings against the audio gate
+npm run speech                   # local synthetic-speech service (see docs/SETUP-SPEECH.md)
 npm run build:web                # build the pack + the offline PWA
 npm run dev --workspace=@dyr/web # run the plain body locally
 ```
@@ -131,6 +132,22 @@ pack are stored — no game or profile store. On startup the kernel is rebuilt b
 replaying that log, so a reload resumes exactly where you were, with pending
 repairs intact and no penalty.
 
+## Synthetic speech (CosyVoice)
+
+Self-hosted Mandarin TTS for text that has no human recording — example
+sentences, explanations, learner-requested playback. Free to run, no API key, no
+metered service; the service refuses to start against a known paid host.
+
+```
+apps/web → apps/service → SyntheticSpeechProvider → CosyVoice (its own FastAPI)
+```
+
+**It is never canonical.** `sourceType` is the literal `"synthetic"` in the
+contract, `runAudioQa` rejects any synthetic asset outright, and a pack full of
+CosyVoice clips still reports `missing_canonical_audio` and leaves the listening
+channel closed — all proven in `fixtures/sim/synthetic-audio.test.ts`. Setup:
+`docs/SETUP-SPEECH.md`; rationale: `docs/adr/0010-synthetic-speech-cosyvoice.md`.
+
 ## Monorepo shape (spec p.25)
 
 ```
@@ -144,7 +161,8 @@ packages/content       manifests, licence gate, attribution output
 packages/senses        speech/audio/handwriting provider interfaces
 packages/layers        removable city/points projection (read-only facts)
 apps/web              plain body: offline-first PWA (Home/Task/Result/Progress/Settings)
-apps/service           placeholder (the plain body is local-first; no server yet)
+apps/service           local speech service: CosyVoice adapter, deterministic
+                       version-aware cache, POST /speech/synthesise
 fixtures               licensed mini pack + deterministic simulations
 docs/adr               nine ADRs; docs/KERNEL_V0.2_AUDIT.md
 ```

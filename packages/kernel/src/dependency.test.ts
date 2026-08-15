@@ -55,6 +55,61 @@ test("the kernel imports no UI / game / layer / provider implementation (headles
   }
 });
 
+test("no learning package imports a concrete speech engine (CosyVoice isolation)", () => {
+  // CosyVoice, its FastAPI runtime and the service that wraps it must stay
+  // behind the SyntheticSpeechProvider contract. A speech engine appearing in
+  // the domain/kernel/content/layers would couple learning logic to an engine.
+  const engineish = /cosyvoice|fastapi|uvicorn|torchaudio|python|melotts|piper-tts|@dyr\/service/i;
+  for (const pkg of ["domain", "kernel", "content", "layers"]) {
+    for (const file of tsFiles(join(root, "packages", pkg, "src"))) {
+      for (const spec of imports(file)) {
+        assert.ok(!engineish.test(spec), `${pkg} must not import speech engine "${spec}" (${file})`);
+      }
+    }
+  }
+});
+
+test("only the service adapter knows CosyVoice; senses stays an interface", () => {
+  // @dyr/senses may NAME the engine in prose, but must not import or implement
+  // one — it is the contract the engine is swapped behind.
+  for (const file of tsFiles(join(root, "packages", "senses", "src"))) {
+    for (const spec of imports(file)) {
+      assert.ok(!/cosyvoice|fastapi|node:child_process|node:http/i.test(spec),
+        `senses must remain a pure contract, found "${spec}" (${file})`);
+    }
+  }
+});
+
+test("the speech service depends only on contracts, never on the kernel", () => {
+  // The service wires an engine to a contract; it has no business importing the
+  // learning kernel, and must never be able to write learning state.
+  for (const file of tsFiles(join(root, "apps", "service", "src"))) {
+    for (const spec of imports(file)) {
+      assert.ok(spec !== "@dyr/kernel", `service must not import the kernel (${file})`);
+      assert.ok(spec !== "@dyr/layers", `service must not import layers (${file})`);
+    }
+  }
+});
+
+test("no package declares a paid speech/AI SaaS dependency", () => {
+  const paid = ["@google-cloud/text-to-speech", "microsoft-cognitiveservices-speech-sdk",
+    "elevenlabs", "@aws-sdk/client-polly", "openai", "@azure/cognitiveservices-speech",
+    "@deepgram/sdk", "assemblyai", "playht"];
+  const manifests = ["package.json",
+    ...["domain", "kernel", "content", "senses", "layers", "fsrs-adapter"].map((p) => join("packages", p, "package.json")),
+    join("apps", "service", "package.json"), join("apps", "web", "package.json")];
+  for (const rel of manifests) {
+    const file = join(root, rel);
+    let raw: string;
+    try { raw = readFileSync(file, "utf8"); } catch { continue; }
+    const pkg = JSON.parse(raw) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const names = [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})];
+    for (const dep of names) {
+      assert.ok(!paid.includes(dep), `${rel} declares paid dependency ${dep}`);
+    }
+  }
+});
+
 test("layers import only domain read-contracts, never the kernel or its stores", () => {
   for (const file of tsFiles(join(root, "packages", "layers", "src"))) {
     for (const spec of imports(file)) {
