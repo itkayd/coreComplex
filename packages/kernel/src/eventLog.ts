@@ -85,6 +85,23 @@ export class EventLog {
     return envelope;
   }
 
+  /**
+   * Adopt an already-minted event verbatim (restoring a persisted log).
+   *
+   * Unlike append(), this mints nothing and rewrites nothing: ids, sequences and
+   * causation edges are preserved exactly, which is what makes a restored kernel
+   * byte-identical to the one that wrote the log. The sequence counter advances
+   * past the adopted event so newly appended events continue the series.
+   */
+  adopt(envelope: EventEnvelope): void {
+    if (this.byKey.has(envelope.idempotencyKey)) return; // already present
+    this.events.push(envelope);
+    this.byKey.set(envelope.idempotencyKey, envelope);
+    if (envelope.localSequence >= this.nextSequence) {
+      this.nextSequence = envelope.localSequence + 1;
+    }
+  }
+
   all(): readonly EventEnvelope[] {
     return this.events;
   }

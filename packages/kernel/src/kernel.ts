@@ -18,6 +18,7 @@ import {
   type Clock,
   type CommandOutcome,
   type DeviceId,
+  type EventEnvelope,
   type EventId,
   type FactId,
   type KernelConfig,
@@ -47,6 +48,7 @@ import { evaluateEvidence, type EvidenceResult, type SpeechSignal } from "./evid
 import { assessWorkload, type WorkloadReport } from "./workload.ts";
 import { Frontier } from "./frontier.ts";
 import { Planner, PLANNER_VERSION, type Plan } from "./planner.ts";
+import { replayTraces } from "./replay.ts";
 import { buildRubric } from "./rubrics.ts";
 import { type AssetProvider } from "./assets.ts";
 
@@ -369,6 +371,65 @@ export class DyrKernel {
 
   publishedFacts(): readonly LearningFact[] {
     return this.facts;
+  }
+
+  /**
+   * Rebuild a kernel's state from a persisted event log (spec p.24 store
+   * separation; p.14 "Resume after interruption without penalty").
+   *
+   * The event log is the source of truth, so restoring a session is exactly the
+   * replay contract applied at startup: traces, published facts, pending repair
+   * directives and command-idempotency keys are all derived from events. Nothing
+   * is invented and no new events are written, so a restored kernel is
+   * indistinguishable from the one that produced the log.
+   */
+  hydrate(events: readonly EventEnvelope[]): void {
+    if (this.log.length > 0) {
+      throw new Error("hydrate() requires a fresh kernel: its event log is not empty");
+    }
+    const ordered = [...events].sort((a, b) => a.localSequence - b.localSequence);
+
+    // 1. Traces — replayed from the authoritative memoryAfter payloads.
+    const replayed = replayTraces(ordered);
+    for (const trace of replayed.all()) this.traces.put(trace);
+
+    // 2. Re-append the events verbatim so the log, cursors and idempotency keys
+    //    match the persisted history.
+    for (const e of ordered) this.log.adopt(e);
+
+    // 3. Derive the outward projections and planner inputs from those events.
+    const now = this.now();
+    for (const e of ordered) {
+      switch (e.eventType) {
+        case "LearningFactPublished":
+          this.facts.push((e.payload as { fact: LearningFact }).fact);
+          break;
+        case "RepairScheduled": {
+          const p = e.payload as { traceId: string; eligibleAt: number; expiresAt: number; reason: string };
+          if (p.expiresAt > now) {
+            const prior = this.repairs.get(p.traceId)?.attempt ?? 0;
+            this.repairs.set(p.traceId, {
+              trace: p.traceId as TraceId,
+              eligibleAt: p.eligibleAt,
+              expiresAt: p.expiresAt,
+              attempt: prior + 1,
+              reason: p.reason,
+            });
+          }
+          break;
+        }
+        case "TraceUpdated": {
+          // A successful review clears any repair pending on that trace, exactly
+          // as the live path does.
+          const p = e.payload as { traceId: string; ratingApplied: string };
+          if (p.ratingApplied !== "again") this.repairs.delete(p.traceId);
+          break;
+        }
+        case "SessionPlanned":
+          this.correlation = e.eventId;
+          break;
+      }
+    }
   }
 
   private append<P>(

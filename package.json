@@ -15,7 +15,8 @@
     "test": "node --test --experimental-strip-types \"packages/**/*.test.ts\" \"fixtures/**/*.test.ts\"",
     "sim": "node fixtures/sim/simulate.ts",
     "matrix": "node fixtures/sim/matrix.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "build:pack": "node packages/content/bin/build-pack.ts"
   },
   "devDependencies": {
     "@types/node": "22.10.5",
