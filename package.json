@@ -32,7 +32,8 @@
     "build:fixture-pack": "node scripts/build-fixture-pack.ts",
     "content:audio:review": "node packages/content/bin/audio-review.ts",
     "content:audio:certify": "node packages/content/bin/audio-certify.ts",
-    "content:import:hsk": "node scripts/import-hsk.ts"
+    "content:import:hsk": "node scripts/import-hsk.ts",
+    "content:import:hsk-lexemes": "node scripts/import-hsk-lexemes.ts"
   },
   "devDependencies": {
     "@types/node": "22.10.5",

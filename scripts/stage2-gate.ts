@@ -124,6 +124,12 @@ const certified = release.entries.length;
 const bundled = pack.lexemes.filter((l) => isCanonical(pack.audio.get(String(l.id)))).length;
 const runtimeValid = release.entries.filter((e) => e.asset.runtime?.sha256 === e.asset.sha256).length;
 
+// The binding bar is the CORE 60 (spec p.28), not the whole pack: extra reading
+// content is welcome but must never dilute the Stage 2 requirement into a
+// percentage that flatters itself as the pack grows.
+const coreIds = new Set(targets.map((t) => t.lexemeId));
+const corePresent = pack.lexemes.filter((l) => coreIds.has(String(l.id))).length;
+
 const duplicateTargets = (() => {
   const seen = new Map<string, number>();
   for (const r of inbox.results) {
@@ -134,7 +140,7 @@ const duplicateTargets = (() => {
 })();
 
 const matrix: [string, number, number][] = [
-  ["Core lexemes", pack.lexemes.length, 60],
+  ["Core lexemes", corePresent, 60],
   ["Candidate recordings supplied", inbox.results.length, 60],
   ["Unique Core60 targets", uniqueTargets.size, 60],
   ["Licence accepted", licenceOk.length, 60],
@@ -150,7 +156,8 @@ const matrix: [string, number, number][] = [
 // ---------------------------------------------------------------------------
 
 const total = pack.lexemes.length;
-add("Content", "60 lexemes", total === 60 ? "pass" : "fail", `${total} lexemes, ${rejected.length} rejected`);
+add("Content", "60 Core lexemes present", corePresent === 60 ? "pass" : "fail",
+  `${corePresent}/60 core, ${total} in the pack, ${rejected.length} rejected`);
 add("Content", "lexemes are licensed (licence manifests)", pack.manifest.length === total ? "pass" : "fail",
   `${pack.manifest.length}/${total} manifest entries`);
 add("Content", "attribution output", pack.attributions.length === total ? "pass" : "fail",

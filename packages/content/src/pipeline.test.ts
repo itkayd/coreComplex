@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { CORE60 } from "./packs/core60.data.ts";
 import assert from "node:assert/strict";
 import {
   buildCore60Pack,
@@ -10,10 +11,14 @@ import {
   declareAudio,
 } from "./index.ts";
 
-test("the pack ingests exactly 60 lexemes and rejects none (Stage 2 plain slice)", () => {
+test("the pack ingests the Core 60 plus the HSK 1 expansion, rejecting none", () => {
   const r = buildCore60Pack();
-  assert.equal(r.ingested, 60);
-  assert.equal(r.pack.lexemes.length, 60);
+  // Two differently-licensed sets: the hand-authored CC0 Core 60, plus the
+  // CC BY-SA HSK 1 expansion. Both are counted; neither is silently merged.
+  assert.equal(r.ingested, r.pack.lexemes.length + r.rejected.length);
+  assert.ok(r.pack.lexemes.length > 400, `expected the expanded pack, got ${r.pack.lexemes.length}`);
+  assert.equal(r.pack.lexemes.filter((l) => CORE60.some((c) => c.id === String(l.id))).length, 60,
+    "all 60 hand-authored lexemes must survive into the pack");
   assert.deepEqual(r.rejected, [], "no entry fails QA or the licence gate");
 });
 
@@ -33,7 +38,7 @@ test("the pack version is derived from content, so a released pack is immutable 
 
 test("every bundled asset carries verifiable provenance and passes the licence gate (p.7)", () => {
   const r = buildCore60Pack();
-  assert.equal(r.pack.manifest.length, 60);
+  assert.equal(r.pack.manifest.length, r.pack.lexemes.length);
   for (const asset of r.pack.manifest) {
     assert.equal(licenceGate(asset).allowed, true, `${asset.id} allowed`);
     assert.equal(asset.redistributionAllowed, true);
@@ -46,15 +51,49 @@ test("every bundled asset carries verifiable provenance and passes the licence g
 test("no bundled asset derives from Pleco or an unlicensed HSK list (p.22)", () => {
   const r = buildCore60Pack();
   for (const asset of r.pack.manifest) {
-    assert.ok(!/pleco/i.test(asset.sourceName), "no Pleco provenance");
-    assert.ok(!/hsk/i.test(asset.sourceName), "no HSK list provenance");
+    // The rule is UNLICENSED, not the word. An asset may name Pleco or an HSK
+    // list only if it records an explicit grant from the rights holder — which
+    // is provenance, unlike renaming the source to dodge the substring.
+    if (/pleco/i.test(asset.sourceName) || /hsk/i.test(asset.sourceName)) {
+      const grant = asset.rightsGrant;
+      assert.ok(grant, `${asset.id} names a denied source with no recorded rights grant`);
+      assert.ok(grant.holder.length > 0, `${asset.id} grant names no holder`);
+      assert.ok(grant.url.startsWith("https://"), `${asset.id} grant is not verifiable`);
+      assert.ok(["MIT", "Apache-2.0", "CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0"].includes(grant.licence),
+        `${asset.id} grant cites a licence that is not on the allowlist: ${grant.licence}`);
+    }
+    assert.equal(licenceGate(asset).allowed, true, `${asset.id} must still pass the gate`);
   }
+});
+
+test("a denied source token cannot be cleared by wording alone", () => {
+  const base = buildCore60Pack().pack.manifest.find((a) => a.rightsGrant);
+  assert.ok(base, "the pack should contain at least one granted asset to test against");
+
+  // Same asset, grant removed: the deny rule must bite again.
+  const { rightsGrant, ...withoutGrant } = base;
+  assert.equal(licenceGate(withoutGrant as typeof base).allowed, false);
+
+  // A grant citing a licence that is not allowed is not a grant.
+  assert.equal(
+    licenceGate({ ...base, rightsGrant: { ...base.rightsGrant!, licence: "PROPRIETARY" } }).allowed,
+    false,
+  );
+  // A grant with nowhere to verify it is not a grant.
+  assert.equal(licenceGate({ ...base, rightsGrant: { ...base.rightsGrant!, url: "" } }).allowed, false);
+
+  // And a grant can never launder the LICENCE itself — NC/ND describe the terms.
+  assert.equal(
+    licenceGate({ ...base, licenseSpdx: "CC-BY-NC-4.0" }).allowed,
+    false,
+    "a rights grant must not clear a non-commercial licence",
+  );
 });
 
 test("attribution output is complete and reproducible (p.28)", () => {
   const a = buildCore60Pack();
   const b = buildCore60Pack();
-  assert.equal(a.pack.attributions.length, 60);
+  assert.equal(a.pack.attributions.length, a.pack.lexemes.length);
   assert.deepEqual(a.pack.attributions, b.pack.attributions);
 });
 
@@ -72,7 +111,7 @@ test("the graph carries pronunciation with tone and sandhi metadata (ADR-0009)",
 
 test("HUMAN AUDIO IS CANONICAL: unprovisioned audio never satisfies the gate (p.21)", () => {
   const r = buildCore60Pack();
-  assert.equal(r.audioPending.length, 60, "no clip is provisioned yet — stated honestly");
+  assert.equal(r.audioPending.length, r.pack.lexemes.length, "no clip is provisioned yet — stated honestly");
   const provider = packAssetProvider(r.pack);
   for (const lex of r.pack.lexemes) {
     assert.equal(provider.hasCanonicalAudio(lex.id), false, `${lex.id} has no canonical audio`);

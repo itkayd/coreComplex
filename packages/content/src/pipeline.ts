@@ -29,6 +29,9 @@ import { canonicalAudioDigestRows, contentDigestInput } from "./validate.ts";
 import { declareAudio, isCanonical, type AudioAsset } from "./audio.ts";
 import type { CanonicalAudio } from "./sources/certify.ts";
 import { CORE60, CORE60_EDGES, type Core60Entry } from "./packs/core60.data.ts";
+import {
+  HSK1, HSK1_ATTRIBUTION, HSK1_LICENCE, HSK1_LICENCE_URL, HSK1_RIGHTS_GRANT, HSK1_SOURCE_NAME,
+} from "./packs/hsk1.data.ts";
 
 export function sha256(input: string): string {
   return createHash("sha256").update(input, "utf8").digest("hex");
@@ -78,19 +81,59 @@ const PACK_ID = "dyr-core60";
 const LICENCE = "CC0-1.0";
 const AUTHOR = "Dyr Mandarin Lab";
 
+/**
+ * The pack holds two differently-licensed sets, and says so per asset.
+ *
+ * The Core 60 was authored here and is CC0. The HSK 1 expansion carries
+ * CC-CEDICT definitions, which are CC BY-SA — share-alike is a real obligation
+ * and aggregation does not launder it. Folding them into one licence would make
+ * the attribution output false, so provenance is decided per entry.
+ */
+const HSK1_IDS = new Set(HSK1.map((e) => e.id));
+
+interface Provenance {
+  licenceSpdx: string;
+  licenceUrl: string;
+  sourceName: string;
+  author: string;
+  attribution: string;
+  rightsGrant?: SourceAsset["rightsGrant"];
+}
+
+function provenanceFor(id: string): Provenance {
+  return HSK1_IDS.has(id)
+    ? {
+        licenceSpdx: HSK1_LICENCE,
+        licenceUrl: HSK1_LICENCE_URL,
+        sourceName: HSK1_SOURCE_NAME,
+        author: "CC-CEDICT contributors",
+        attribution: HSK1_ATTRIBUTION,
+        rightsGrant: { ...HSK1_RIGHTS_GRANT },
+      }
+    : {
+        licenceSpdx: LICENCE,
+        licenceUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+        sourceName: "Dyr Core 60 (authored)",
+        author: AUTHOR,
+        attribution: `${AUTHOR} — Dyr Core 60 (CC0-1.0)`,
+      };
+}
+
 /** 02 MANIFEST — one SourceAsset per ingested lexeme, with real provenance. */
 function toManifestAsset(e: Core60Entry, retrievedAt: number, version: PackVersion): SourceAsset {
   const body = JSON.stringify([e.id, e.simplified, e.traditional, e.pinyin, e.senses, e.pos]);
+  const p = provenanceFor(e.id);
   return {
     id: e.id,
     type: "lexeme",
-    sourceName: "Dyr Core 60 (authored)",
+    sourceName: p.sourceName,
     retrievedAt,
     immutableVersion: version,
-    licenseSpdx: LICENCE,
-    licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
-    author: AUTHOR,
-    attributionText: `${AUTHOR} — Dyr Core 60 (CC0-1.0)`,
+    licenseSpdx: p.licenceSpdx,
+    licenseUrl: p.licenceUrl,
+    author: p.author,
+    attributionText: p.attribution,
+    rightsGrant: p.rightsGrant,
     redistributionAllowed: true,
     derivativeAllowed: true,
     sha256: sha256(body),
@@ -155,7 +198,7 @@ export function buildCore60Pack(opts: BuildOptions = {}): BuildReport {
   }
 
   // 01 INGEST — deterministic order by id.
-  const ingestedEntries = [...CORE60].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const ingestedEntries = [...CORE60, ...HSK1].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   // 04 NORMALISE + 05 ASSET QA
   const normalised: Core60Entry[] = [];

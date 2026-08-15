@@ -164,7 +164,7 @@ export class Planner {
    */
   private cueAnswer(dir: CueDirection, lex: Lexeme): { cue: string; answer: string } {
     const meaning = lex.senses[0] ?? lex.simplified;
-    const meanings = lex.senses.length > 0 ? lex.senses.join("|") : lex.simplified;
+    const meanings = meaningAnswers(lex.senses) || lex.simplified;
     switch (dir) {
       case "audio_to_meaning": return { cue: `audio:${lex.id}`, answer: meanings };
       case "hanzi_to_meaning": return { cue: lex.simplified, answer: meanings };
@@ -387,6 +387,34 @@ function entrySpecFor(skill: Skill): TaskFamilySpec {
 /** For reviews we reuse the entry family's rubric/cue for the skill. */
 function currentSpecFor(skill: Skill): TaskFamilySpec {
   return entrySpecFor(skill);
+}
+
+/**
+ * Accepted spellings of a meaning, "|"-separated.
+ *
+ * Dictionary glosses carry apparatus a learner cannot be expected to type:
+ * "to think (about)", "the middle; the inside", "you (plural)". The parenthetical
+ * and the second clause are there to DISAMBIGUATE for a reader, not to be
+ * reproduced — so the full gloss is still what gets displayed, while the
+ * stripped forms are also accepted. Nothing is loosened semantically: every
+ * variant is a substring of a gloss the pack already asserts is correct.
+ */
+export function meaningAnswers(senses: readonly string[]): string {
+  const forms = new Set<string>();
+  for (const sense of senses) {
+    const full = sense.trim();
+    if (full.length === 0) continue;
+    forms.add(full);
+    // Each clause of a multi-part gloss is independently a correct answer.
+    for (const clause of full.split(/\s*;\s*/)) {
+      const c = clause.trim();
+      if (c.length === 0) continue;
+      forms.add(c);
+      const bare = c.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim();
+      if (bare.length > 0) forms.add(bare);
+    }
+  }
+  return [...forms].join("|");
 }
 
 /**

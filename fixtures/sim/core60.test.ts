@@ -23,9 +23,11 @@ function drive(h: ReturnType<typeof makeCore60Harness>, days: number, recall: Re
   }
 }
 
-test("the kernel runs on the real 60-lexeme licensed pack", () => {
+test("the kernel runs on the real licensed pack", () => {
   const h = makeCore60Harness();
-  assert.equal(h.lexemeIds.length, 60);
+  // The pack now carries the hand-authored CC0 Core 60 plus the CC BY-SA HSK 1
+  // expansion, so this is a floor rather than an equality.
+  assert.ok(h.lexemeIds.length >= 60, `expected at least the Core 60, got ${h.lexemeIds.length}`);
   const plan = h.kernel.planSession({ budgetMinutes: 7, candidateIntroductions: h.lexemeIds });
   assert.ok(plan.tasks.length > 0, "a session is plannable from real content");
   assert.ok(plan.predictedMinutes <= 7);
@@ -66,17 +68,21 @@ test("replay holds over a long run on the real pack", () => {
  * THE REQUIRED ACCEPTANCE FIXTURE (spec p.6, p.28), now on REAL content:
  * sixty encountered lexemes must never become "sixty mastered words".
  */
-test("ACCEPTANCE: 60 encountered lexemes report four independent counts, never one scalar", () => {
+test("ACCEPTANCE: encountered lexemes report four independent counts, never one scalar", () => {
   const h = makeCore60Harness({ provisionAudio: true });
   // A deliberately asymmetric learner: strong receptive, weaker production.
   drive(h, 200, { listening: 0.92, reading: 0.88, speaking: 0.62, writing: 0.5 });
 
   const profile = h.kernel.frontier.profile();
 
-  // Every skill reports out of the SAME 60 encountered lexemes...
+  // Every skill reports out of the SAME set of encountered lexemes. The count
+  // itself is a property of the pack, so assert the AGREEMENT rather than a
+  // number that changes whenever content is added.
+  const encountered = profile[SKILLS[0]].total;
+  assert.ok(encountered > 0, "the learner should have encountered something in 200 days");
   for (const skill of SKILLS) {
-    assert.equal(profile[skill].total, 60, `${skill} reported out of 60`);
-    assert.ok(profile[skill].retained <= 60);
+    assert.equal(profile[skill].total, encountered, `${skill} reported out of a different total`);
+    assert.ok(profile[skill].retained <= encountered);
   }
   // ...and the four counts are genuinely independent, not one shared number.
   const counts = SKILLS.map((s) => profile[s].retained);

@@ -142,7 +142,10 @@ that install step is enough on a fresh clone.
 
 ## Stage 2 — the plain receptive slice
 
-**Content.** `Dyr Core 60`: 60 high-frequency Mandarin lexemes authored for this
+**Content.** The pack carries **two differently-licensed sets**, and says which is
+which per asset.
+
+`Dyr Core 60`: 60 high-frequency Mandarin lexemes authored for this
 project and released **CC0-1.0** — not scraped or reconstructed from any
 dictionary product, no Pleco data, no official HSK list. Includes 银行 (the
 spec's worked example) and real learner confusables (买/卖, 他/她, 日/月, 这/那),
@@ -150,6 +153,20 @@ plus 69 characters, 60 pronunciation nodes with tone and third-tone-sandhi
 metadata, and grammar atoms. Built by the seven-stage pipeline (spec p.7) into an
 **immutable, sha256-signed, versioned artefact** — the pack version embeds the
 content hash, so a correction necessarily mints a new version.
+
+`HSK 1 expansion`: a further **400 lexemes** covering the rest of HSK 3.0 band 1.
+Band membership comes from the official Ministry of Education word list
+(elkmovie/hsk30, MIT, © Pleco Inc. — an OCR the rights holder published);
+definitions come from CC-CEDICT and are therefore **CC BY-SA 4.0**, not CC0.
+Share-alike is a real obligation and aggregation does not launder it, so these
+entries carry their own licence and attribution. Only the word, its pinyin and a
+cleaned gloss were taken — no frequency, part-of-speech or radical data.
+
+Because the specification bans *unlicensed* HSK data and Pleco data, an asset
+naming either must record an explicit `rightsGrant`: who granted it, under what
+licence, and where that can be verified. The licence gate refuses a denied source
+token without one — renaming a source to slip past the substring check would be
+evasion, whereas recording the grant is provenance.
 
 **The plain body** (`apps/web`): an installable, offline-first React PWA —
 Home / Task / Result / Progress / Settings. One primary Start button, 3/7/15

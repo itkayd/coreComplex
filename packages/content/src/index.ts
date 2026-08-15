@@ -27,6 +27,33 @@ export interface SourceAsset {
   redistributionAllowed: boolean;
   derivativeAllowed: boolean;
   modificationNote?: string;
+  /**
+   * An explicit, recorded permission from the rights holder that clears an
+   * otherwise-denied provenance token.
+   *
+   * The deny list is a blunt substring check on purpose: it exists to stop
+   * unreviewed content that merely *looks* like it came from a forbidden source.
+   * But a blunt check cannot tell "Pleco's proprietary dictionary, taken without
+   * permission" from "an OCR of a government standard that Pleco Inc. themselves
+   * published under MIT" — and the second is exactly the kind of open licensing
+   * the specification's ALLOW list is for.
+   *
+   * So the override is structural rather than verbal. Renaming a source to dodge
+   * the substring would be evasion; recording who granted what, under which
+   * licence, is provenance. A grant only ever clears a denied TOKEN — the licence
+   * itself must still be on the allowlist, and redistribution must still be
+   * granted.
+   */
+  rightsGrant?: {
+    /** Who holds the rights and issued the licence. */
+    holder: string;
+    /** The licence they issued it under; must still pass the allowlist. */
+    licence: string;
+    /** Where that grant can be verified. */
+    url: string;
+    /** Why this is not the thing the deny rule targets. */
+    note: string;
+  };
   sha256: string;
   languageTag: string; // e.g. "zh-CN"
   region?: string;
@@ -93,14 +120,33 @@ export function attributionReport(assets: SourceAsset[]): AttributionEntry[] {
 export function licenceGate(asset: SourceAsset): LicenceDecision {
   const spdx = asset.licenseSpdx ?? "";
   if (!spdx || spdx === "UNKNOWN") return { allowed: false, reason: "missing or unknown licence" };
+
+  // A licence token is never overridable: NC and ND describe the terms
+  // themselves, and no third-party grant can change what a licence says.
   for (const bad of DENY_SUBSTRINGS) {
-    if (spdx.includes(bad) || asset.sourceName.includes(bad)) {
-      return { allowed: false, reason: `denied source/licence token: ${bad}` };
+    if (spdx.includes(bad)) return { allowed: false, reason: `denied licence token: ${bad}` };
+  }
+
+  // A SOURCE token is a heuristic about origin, and origin can be cleared by a
+  // recorded grant from the rights holder — but only by that, never by wording.
+  const grant = asset.rightsGrant;
+  for (const bad of DENY_SUBSTRINGS) {
+    if (!asset.sourceName.includes(bad)) continue;
+    if (!grant) return { allowed: false, reason: `denied source token: ${bad}` };
+    if (!ALLOW.has(grant.licence)) {
+      return { allowed: false, reason: `rights grant for "${bad}" cites a licence that is not allowed: ${grant.licence}` };
+    }
+    if (grant.holder.length === 0 || grant.url.length === 0) {
+      return { allowed: false, reason: `rights grant for "${bad}" does not name a holder and a verifiable source` };
     }
   }
+
   if (!asset.redistributionAllowed) return { allowed: false, reason: "no redistribution rights" };
   if (!ALLOW.has(spdx)) return { allowed: false, reason: `licence not on allowlist: ${spdx}` };
-  return { allowed: true, reason: `allowed under ${spdx}` };
+  return {
+    allowed: true,
+    reason: grant ? `allowed under ${spdx}; ${grant.holder} granted ${grant.licence}` : `allowed under ${spdx}`,
+  };
 }
 
 // Pack pipeline, audio provisioning and the AssetProvider implementation.

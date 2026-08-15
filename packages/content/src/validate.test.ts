@@ -23,8 +23,10 @@ test("the Node build hash and the browser (Web Crypto) hash AGREE", async () => 
 });
 
 test("a genuine pack passes structure and integrity", async () => {
-  const pack = await loadVerifiedPack(clone(exported()));
-  assert.equal(pack.lexemes.length, 60);
+  const built = exported();
+  const pack = await loadVerifiedPack(clone(built));
+  assert.equal(pack.lexemes.length, built.lexemes.length);
+  assert.ok(pack.lexemes.length >= 60, "the pack must at least carry the Core 60");
 });
 
 test("PACK HASH MISMATCH: edited content is refused", async () => {

@@ -393,8 +393,11 @@ test("a certified asset reaches the production RuntimePack as canonical audio", 
     assert.equal(asset.provenance?.sourceName, "Mozilla Common Voice zh-CN");
     assert.ok(asset.runtime?.path.startsWith("audio/"));
     assert.deepEqual(report.audioFiles.map((f) => f.path), [asset.runtime!.path]);
-    // Every other lexeme stays honestly declared.
-    assert.equal(report.audioPending.length, 59);
+    // Every OTHER lexeme in the pack stays honestly declared — the count follows
+    // the pack size rather than a literal, so adding content cannot silently
+    // weaken this into a no-op.
+    assert.equal(report.audioPending.length, report.pack.lexemes.length - 1);
+    assert.ok(report.audioPending.length > 0);
     assert.equal(report.pack.audio.get("water.n.01")?.state, "declared");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
