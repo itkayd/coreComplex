@@ -110,7 +110,7 @@ export async function openSession(): Promise<SessionState> {
   // session starts from the learner's real history rather than from empty.
   if (syncEnabled()) {
     try {
-      const restore = await restoreIfEmpty(String(LEARNER), persisted.length);
+      const restore = await restoreIfEmpty(persisted.length);
       if (restore.events && restore.events.length > 0) {
         await db.events.bulkPut(restore.events.map((e) => JSON.parse(JSON.stringify(e))));
         persisted = await db.events.orderBy("localSequence").toArray();
@@ -179,7 +179,7 @@ export async function deleteAllLearningData(): Promise<{ local: true; backup: "d
   db ??= new LearningDb();
   await db.events.clear();
   if (!syncEnabled()) return { local: true, backup: "not_enabled" };
-  return { local: true, backup: (await deleteBackup(String(LEARNER))) ? "deleted" : "failed" };
+  return { local: true, backup: (await deleteBackup()) ? "deleted" : "failed" };
 }
 
 /** The learner id the backup is keyed by. */
@@ -193,7 +193,7 @@ export async function adoptRestoredEvents(events: EventEnvelope[]): Promise<void
 
 /** Back up whatever this device has. Best-effort: never blocks the learner. */
 export async function backupNow(kernel: DyrKernel): Promise<SyncStatus> {
-  return pushEvents(String(LEARNER), kernel.log.all());
+  return pushEvents(kernel.log.all());
 }
 
 // ---- Session flow helpers -------------------------------------------------

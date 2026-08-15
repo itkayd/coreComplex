@@ -19,6 +19,9 @@ import { audioReadiness, resetAudioReadiness, type AudioReadiness } from "./pron
 import { health, setSyncEnabled, syncEnabled, type SyncStatus } from "./sync.ts";
 import { CanonicalAudioCue, type CueStatus } from "./CanonicalAudioCue.tsx";
 import { Words } from "./Words.tsx";
+import { SignIn } from "./SignIn.tsx";
+import { Icon, type IconName } from "./Icons.tsx";
+import { accountStatus, signOut, type AccountStatus } from "./auth.ts";
 import {
   MODE_MINUTES,
   PACK_BASE_URL,
@@ -50,11 +53,16 @@ export function App() {
   const [result, setResult] = useState<{ res: SubmitResult; task: TaskContract; expected: string } | null>(null);
   const [cursor, setCursor] = useState(0);
   const [tick, setTick] = useState(0);
+  const [account, setAccount] = useState<AccountStatus | null>(null);
+  const [skippedSignIn, setSkippedSignIn] = useState(false);
 
   useEffect(() => {
     openSession()
       .then((s) => { setState(s); setCursor(s.kernel.log.length); })
       .catch((e) => setError(String(e?.message ?? e)));
+    // Asked once, in parallel with the pack: the answer gates the backup, never
+    // the session, so nothing here waits on it.
+    accountStatus().then(setAccount);
   }, []);
 
   const save = useCallback(async (s: SessionState) => {
@@ -113,6 +121,28 @@ export function App() {
     );
   }
 
+  // The gate is shown only when there is genuinely something to sign in to, and
+  // only before any studying has happened. A returning learner with history is
+  // never asked again — their session cookie or their local log is enough, and
+  // interrupting a daily habit to ask for a passphrase would be its own bug.
+  const needsSignIn = account !== null
+    && account.configured
+    && !account.authenticated
+    && !skippedSignIn
+    && state.kernel.log.length === 0;
+
+  if (needsSignIn) {
+    return (
+      <main className="app">
+        <SignIn
+          status={account}
+          onSignedIn={() => { setAccount({ ...account, authenticated: true }); }}
+          onSkip={() => setSkippedSignIn(true)}
+        />
+      </main>
+    );
+  }
+
   const inSession = screen === "task" || screen === "result";
 
   return (
@@ -129,13 +159,16 @@ export function App() {
         )}
         {screen === "words" && <Words state={state} key={`w${tick}`} />}
         {screen === "progress" && <Progress state={state} key={`p${tick}`} />}
-        {screen === "settings" && <Settings state={state} />}
+        {screen === "settings" && (
+          <Settings state={state} account={account}
+            onAccountChange={(next) => setAccount(next)} />
+        )}
       </main>
       {!inSession && (
         <nav className="nav" aria-label="Sections">
           {(["home", "words", "progress", "settings"] as Screen[]).map((s) => (
             <button key={s} onClick={() => setScreen(s)} aria-current={screen === s ? "page" : undefined}>
-              <NavIcon screen={s} />
+              <Icon name={NAV_ICON[s]} />
               {s[0].toUpperCase() + s.slice(1)}
             </button>
           ))}
@@ -480,13 +513,18 @@ function Progress({ state }: { state: SessionState }) {
 }
 
 /** SETTINGS — privacy, export and deletion controls (spec p.28 plain-slice done). */
-function Settings({ state }: { state: SessionState }) {
+function Settings({ state, account, onAccountChange }: {
+  state: SessionState;
+  account: AccountStatus | null;
+  onAccountChange: (next: AccountStatus) => void;
+}) {
   const [msg, setMsg] = useState<string | null>(null);
   const [backup, setBackup] = useState(() => syncEnabled());
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [audio, setAudio] = useState<AudioReadiness | null>(null);
+  const [signInOpen, setSignInOpen] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -535,6 +573,16 @@ function Settings({ state }: { state: SessionState }) {
     setBusy(false);
   };
 
+  if (signInOpen && account) {
+    return (
+      <SignIn
+        status={account}
+        onSignedIn={() => { onAccountChange({ ...account, authenticated: true }); setSignInOpen(false); }}
+        onSkip={() => setSignInOpen(false)}
+      />
+    );
+  }
+
   return (
     <div className="fade stack">
       <header>
@@ -543,7 +591,7 @@ function Settings({ state }: { state: SessionState }) {
       </header>
 
       <div className="card">
-        <h2>Your data</h2>
+        <h2><Icon name="shield" size={18} /> Your data</h2>
         <p className="muted small">
           {backup
             ? "Your learning log is stored on this device and copied to the backup below. Nothing else leaves it."
@@ -551,14 +599,36 @@ function Settings({ state }: { state: SessionState }) {
           {" "}The learning log is yours to export or delete at any time.
         </p>
         <div className="row">
-          <button onClick={onExport}>Export log</button>
-          <button onClick={onDelete}>Delete all</button>
+          <button onClick={onExport}><Icon name="download" size={17} /> Export log</button>
+          <button onClick={onDelete}><Icon name="trash" size={17} /> Delete all</button>
         </div>
         {msg && <p className="small ok" role="status" style={{ marginTop: 10, marginBottom: 0 }}>{msg}</p>}
       </div>
 
+      {/* Account first: whether you are signed in determines whether the card
+          below can do anything at all, so it belongs above it. */}
+      {account?.configured && (
+        <div className="card">
+          <h2><Icon name="shield" size={18} /> Account</h2>
+          <p className="muted small">
+            {account.authenticated
+              ? "Signed in. Your learning history syncs to this app\u2019s own database and nowhere else."
+              : "Not signed in on this device, so nothing is being backed up. Studying works regardless \u2014 everything is written here first."}
+          </p>
+          {account.authenticated ? (
+            <button onClick={async () => {
+              await signOut();
+              onAccountChange({ ...account, authenticated: false });
+              setMsg("Signed out. Your work stays on this device.");
+            }}>Sign out</button>
+          ) : (
+            <button onClick={() => { setSignInOpen(true); }}>Sign in</button>
+          )}
+        </div>
+      )}
+
       <div className="card">
-        <h2>Backup</h2>
+        <h2><Icon name="cloud" size={18} /> Backup</h2>
         <p className="muted small">
           Off by default. When on, your learning log is copied to this app&rsquo;s own database so a
           cleared browser or a lost phone does not erase it. Nothing else is sent — no recordings, no
@@ -591,7 +661,7 @@ function Settings({ state }: { state: SessionState }) {
       </div>
 
       <div className="card">
-        <h2>Content</h2>
+        <h2><Icon name="words" size={18} /> Content</h2>
         <dl className="facts">
           <dt>Pack</dt><dd>{state.pack.packId}</dd>
           <dt>Words</dt><dd>{state.pack.lexemes.length}</dd>
@@ -617,7 +687,7 @@ function Settings({ state }: { state: SessionState }) {
       {/* Sound is explained rather than merely offered: a learner has to know
           which of the two very different things they are hearing. */}
       <div className="card">
-        <h2>Sound</h2>
+        <h2><Icon name="sound" size={18} /> Sound</h2>
         <p className="muted small">
           Dyr uses audio two ways, and they are not interchangeable. <strong>Listening tasks</strong> play
           verified human recordings only — never a generated voice — which is why a word with no
@@ -649,7 +719,7 @@ function Settings({ state }: { state: SessionState }) {
       </div>
 
       <div className="card">
-        <h2>Accessibility</h2>
+        <h2><Icon name="spark" size={18} /> Accessibility</h2>
         <p className="muted small" style={{ marginBottom: 0 }}>
           Reduced motion follows your system setting, and so does light or dark. Colour is never the
           only signal — every skill is named in text beside its dot.
@@ -659,25 +729,24 @@ function Settings({ state }: { state: SessionState }) {
   );
 }
 
+/**
+ * A skill chip: icon + dot + name.
+ *
+ * Three signals for one fact, deliberately. Colour alone fails for a colourblind
+ * learner and in high-contrast modes; the silhouette and the word do not.
+ */
 function SkillChip({ skill }: { skill: Skill }) {
   return (
     <span className={`chip s-${skill}`}>
-      <span className="dot" aria-hidden="true" />
+      <Icon name={skill as IconName} size={15} />
       {SKILL_LABEL[skill]}
     </span>
   );
 }
 
-function NavIcon({ screen }: { screen: Screen }) {
-  const common = { className: "icon", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
-  if (screen === "progress") {
-    return <svg {...common}><path d="M4 19V10M10 19V5M16 19v-6M22 19H2" /></svg>;
-  }
-  if (screen === "words") {
-    return <svg {...common}><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z" /><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z" /></svg>;
-  }
-  if (screen === "settings") {
-    return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" /></svg>;
-  }
-  return <svg {...common}><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V21h13V9.5" /></svg>;
-}
+/** Which icon stands for each section. Names, not markup — see Icons.tsx. */
+const NAV_ICON: Record<Screen, IconName> = {
+  home: "home", words: "words", progress: "progress", settings: "settings",
+  // Never rendered (the nav is hidden mid-session) but the map must be total.
+  task: "spark", result: "check",
+};

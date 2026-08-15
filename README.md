@@ -201,6 +201,14 @@ skipped rather than duplicated and a stored event is never rewritten. Row Level
 Security is on with no public policy, so no browser can reach the table directly
 — see `docs/BACKUP.md` and `supabase/migrations/`.
 
+**One account, and it never blocks studying.** The backup is personal, so it sits
+behind a single passphrase held in the deployment's environment — no sign-up, no
+user table, no reset flow, and the learner id is derived from a verified session
+rather than trusted from the request. Studying needs none of it: the sign-in
+screen always offers Skip, an expired session degrades the *backup* and never the
+session, and the browser gate asserts that a skipped learner can still be issued
+a task. See `docs/ACCOUNT.md`.
+
 **Pack integrity.** The PWA refuses a pack that does not validate structurally
 *and* still hash to its declared `contentHash`. The digest definition is shared
 by the Node build and the browser verifier, so they cannot drift. Tampering,

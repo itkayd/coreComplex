@@ -36,6 +36,7 @@
  *   DELETE /api/sync?learner=<id>
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { OWNER, authenticate } from "./auth.ts";
 
 /** The table the migration creates. See supabase/migrations/. */
 export const TABLE = "learning_events";
@@ -310,7 +311,22 @@ export const BACKEND = "supabase";
  * behaviour on a database failure are all properties of THIS function, and none
  * of them should need a live Postgres to verify.
  */
-export async function handleSync(req: Req, res: Res, store: EventStore): Promise<void> {
+export async function handleSync(
+  req: Req,
+  res: Res,
+  store: EventStore,
+  /**
+   * THE LEARNER THIS REQUEST MAY TOUCH, decided by the caller from a verified
+   * session — never by the client.
+   *
+   * A `learnerId` in the request body or query string is now ignored entirely.
+   * Trusting it meant anyone who guessed one could read, append to or delete
+   * that learner's whole memory history; there is no version of that which is
+   * acceptable once the log is durable. Passing the identity IN, rather than
+   * reading it out of the request, makes it impossible to forget the check.
+   */
+  learner: string = OWNER,
+): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
 
   try {
@@ -320,45 +336,43 @@ export async function handleSync(req: Req, res: Res, store: EventStore): Promise
       return;
     }
 
-    const learnerParam = url.searchParams.get("learner");
+    // The session decides whose log this is. Anything the client sent about
+    // identity is not consulted on any route below.
+    if (!validLearnerId(learner)) { json(res, 400, { ok: false, error: "invalid learner" }); return; }
 
     if (req.method === "GET") {
-      if (!validLearnerId(learnerParam)) { json(res, 400, { ok: false, error: "invalid learner" }); return; }
       const sinceRaw = Number(url.searchParams.get("since") ?? "-1");
       const since = Number.isFinite(sinceRaw) ? Math.trunc(sinceRaw) : -1;
-      const events = await store.read(learnerParam, since, MAX_BATCH);
+      const events = await store.read(learner, since, MAX_BATCH);
       json(res, 200, { ok: true, events, count: events.length });
       return;
     }
 
     if (req.method === "POST") {
       const body = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) as
-        { learnerId?: unknown; events?: unknown } | undefined;
-      if (!validLearnerId(body?.learnerId)) { json(res, 400, { ok: false, error: "invalid learnerId" }); return; }
-      const learnerId = body!.learnerId as string;
+        { events?: unknown } | undefined;
 
       const batch = validateBatch(body?.events);
       if (!batch.ok) { json(res, 400, { ok: false, error: "invalid events", rejected: batch.rejected }); return; }
       if (batch.rows.length === 0) {
-        json(res, 200, { ok: true, stored: 0, skipped: 0, total: await store.count(learnerId) });
+        json(res, 200, { ok: true, stored: 0, skipped: 0, total: await store.count(learner) });
         return;
       }
 
-      const stored = await store.append(learnerId, batch.rows);
+      const stored = await store.append(learner, batch.rows);
       json(res, 200, {
         ok: true,
         stored,
         skipped: batch.rows.length - stored,
-        total: await store.count(learnerId),
+        total: await store.count(learner),
       });
       return;
     }
 
     if (req.method === "DELETE") {
-      if (!validLearnerId(learnerParam)) { json(res, 400, { ok: false, error: "invalid learner" }); return; }
       // Deletion is real and immediate — the spec requires learner data to be
       // deletable, and a backup that outlived the delete would break that.
-      json(res, 200, { ok: true, deleted: await store.remove(learnerParam) });
+      json(res, 200, { ok: true, deleted: await store.remove(learner) });
       return;
     }
 
@@ -376,6 +390,19 @@ export async function handleSync(req: Req, res: Res, store: EventStore): Promise
 }
 
 export default async function handler(req: Req, res: Res): Promise<void> {
+  // Health is the only unauthenticated route: it reports whether a backup
+  // exists at all, which the app needs before it can offer to sign in, and it
+  // returns two integers that identify nobody.
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const isHealth = req.method === "GET" && url.searchParams.get("action") === "health";
+
+  if (!isHealth && !authenticate(req.headers)) {
+    // A learning log is personal. Without a verified session there is no learner
+    // to act on, so there is nothing to do but refuse.
+    json(res, 401, { ok: false, authenticated: false, error: "sign in to use the backup" });
+    return;
+  }
+
   const config = resolveConfig();
   if (!config.ok) {
     // Missing configuration is a supported state, not a crash: the app hides the
@@ -388,5 +415,5 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     });
     return;
   }
-  await handleSync(req, res, supabaseStore(config.config));
+  await handleSync(req, res, supabaseStore(config.config), OWNER);
 }

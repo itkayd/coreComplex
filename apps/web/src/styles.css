@@ -515,3 +515,65 @@ button.selected:hover:not(:disabled) { background: var(--reading-ink); border-co
 .pronounce-compact:hover:not(:disabled) { border-color: var(--line-strong); color: var(--fg); }
 .pronounce-compact[data-audio-state="playing"] { border-color: var(--listening); color: var(--listening); }
 .pronounce-compact:disabled { opacity: 0.4; }
+
+/* ---------------------------------------------------------------------------
+ * Icons in flow.
+ *
+ * An icon beside a label is one phrase, not two elements: it must sit on the
+ * text baseline optically, never shift the line height, and never be the thing
+ * that wraps. `flex-shrink: 0` is what stops a long button label squashing the
+ * glyph into an ellipse.
+ */
+button > svg, h2 > svg { flex-shrink: 0; }
+h2 > svg { vertical-align: -0.18em; margin-right: 0.4em; color: var(--muted); }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+
+/* ---------------------------------------------------------------------------
+ * Sign in.
+ *
+ * Vertically centred and narrow, because it is the only screen with a single
+ * job. It keeps the app's own card language rather than inventing a "login
+ * look" — this is the same product, one step earlier.
+ */
+.gate { max-width: 26rem; margin: 0 auto; justify-content: center; min-height: 70vh; }
+.gate-head { text-align: center; }
+.gate-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 14px;
+  border-radius: 50%;
+  color: var(--reading);
+  background: color-mix(in srgb, var(--reading) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--reading) 28%, transparent);
+}
+
+.field-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 620;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.field {
+  width: 100%;
+  box-sizing: border-box;
+  /* 16px minimum: anything smaller makes iOS Safari zoom the page on focus,
+     which on a phone reads as the layout breaking. */
+  font-size: 1rem;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
+}
+.field:focus-visible { outline: 2px solid var(--reading); outline-offset: 1px; }
+
+/* The skill chip now carries an icon as well as its dot, so colour is never the
+   only signal — see SkillChip. */
+.chip > svg { flex-shrink: 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; }

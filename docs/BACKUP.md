@@ -85,6 +85,18 @@ No secondary index is created. Every query is
 `where learner_id = ? [and local_sequence > ?] order by local_sequence`, which the
 primary key already serves as a leading-column prefix scan.
 
+## Signing in
+
+Every route except `?action=health` requires the account session — see
+`docs/ACCOUNT.md`. Health stays open because it reports whether a backup exists
+at all (which the app needs before it can offer to sign in) and returns two
+integers that identify nobody.
+
+The learner id is **derived from the session**, never from the request. A
+`learnerId` in a body or query string is ignored on every route. Before this,
+anyone who guessed one could read, append to or delete that learner's whole
+memory history.
+
 ## Access control
 
 Row Level Security is enabled with **no policy at all**, and `anon` and
@@ -93,11 +105,10 @@ holding the publishable key — including for another learner's log. The only pa
 in is the trusted server-side client in `api/sync.ts`, which holds the secret key
 and bypasses RLS.
 
-There is deliberately no per-learner policy. `learner_id` is an unauthenticated
-string a browser supplies, so a policy keyed on it would be no protection at all:
-anyone could name someone else's id. Direct browser access would need real
-authentication and a policy keyed on the authenticated user — a different piece
-of work, and not one this feature needs.
+There is deliberately no per-learner policy. A policy would have to key on
+`learner_id`, which Supabase has no way to tie to the app's own session — so it
+would protect nothing. Access control lives where the identity is actually known:
+in `api/sync.ts`, behind the account (`docs/ACCOUNT.md`).
 
 The `learning_events_stats()` function that backs the health check is
 `security invoker` with `EXECUTE` granted only to `service_role`. It returns two
@@ -112,11 +123,15 @@ receives a Supabase URL or key.
 | Call | Result |
 | --- | --- |
 | `GET /api/sync?action=health` | `{ ok, configured, reachable, events, learners, backend: "supabase" }` |
-| `GET /api/sync?learner=<id>&since=<n>` | events after sequence `n`, oldest first, one page of ≤ 500 |
-| `POST /api/sync` `{ learnerId, events }` | `{ stored, skipped, total }` |
-| `DELETE /api/sync?learner=<id>` | `{ deleted }` |
+| `GET /api/sync?since=<n>` | events after sequence `n`, oldest first, one page of ≤ 500 |
+| `POST /api/sync` `{ events }` | `{ stored, skipped, total }` |
+| `DELETE /api/sync` | `{ deleted }` |
 
-Missing configuration returns **503 with `configured: false`** and the reason
+All three act on the session's learner. There is no learner parameter any more,
+because there was never a safe way to accept one.
+
+Without a session every route except health returns **401**. Missing
+configuration returns **503 with `configured: false`** and the reason
 (which names the missing *variable*, never a value). That is a supported state,
 not an error: the app hides the backup control and carries on entirely offline.
 

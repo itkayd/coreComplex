@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AudioAsset } from "@dyr/content/runtime";
 import { loadCanonicalAudio, type AudioLoadFailure } from "@dyr/content/runtime";
+import { Icon } from "./Icons.tsx";
 
 export type CueStatus = "loading" | "ready" | "failed";
 
@@ -131,7 +132,7 @@ export function CanonicalAudioCue({ asset, url, onPlaybackChange, onStatusChange
         /* Generic by design: naming the word here would read the answer aloud. */
         aria-label={plays === 0 ? "Play listening prompt" : "Play listening prompt again"}
       >
-        <span aria-hidden="true">{playing ? "◼" : "▶"}</span>
+        <Icon name={playing ? "stop" : "play"} size={20} />
         <span>{plays === 0 ? "Play" : "Play again"}</span>
       </button>
       <p className="muted small" style={{ marginBottom: 0 }} role="status">

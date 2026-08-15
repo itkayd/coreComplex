@@ -186,7 +186,7 @@ function Band({ band, open, onToggle }: { band: BandProgress; open: boolean; onT
           </button>
           {open && audio?.available && (
             <p className="muted small" style={{ marginTop: 10, marginBottom: 0 }}>
-              🔊 plays a generated voice — a rough guide, not a recording to imitate.
+              The speaker button plays a generated voice — a rough guide, not a recording to imitate.
             </p>
           )}
           {open && (

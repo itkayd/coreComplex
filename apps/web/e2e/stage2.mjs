@@ -188,6 +188,96 @@ async function audioGate(browser) {
   });
 }
 
+/**
+ * The single account, as the learner meets it.
+ *
+ * The property that matters is the one it would be easiest to get wrong: SIGNING
+ * IN MUST NEVER BE REQUIRED TO STUDY. This app is local-first, the pack is
+ * public, and a learner with an expired session on a train must still be able to
+ * work. So the gate is checked for having a way past it, and for the way past it
+ * actually leading to a usable session.
+ *
+ * The preview server has no functions, so `/api/auth` is stubbed — which is also
+ * how the "no account configured" path gets exercised, since that is what an
+ * unconfigured deployment really returns.
+ */
+async function accountGate(browser) {
+  const withAuth = async (label, handler, assertions) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await context.route("**/api/auth", handler);
+    // The backup endpoint is stubbed as unconfigured so nothing else interferes.
+    await context.route("**/api/sync**", (route) =>
+      route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ ok: false, configured: false }) }));
+    const page = await context.newPage();
+    await page.goto(BASE, { waitUntil: "networkidle" });
+    await page.waitForSelector("button", { timeout: 15_000 });
+    try {
+      await assertions(page, label);
+    } finally {
+      await context.close();
+    }
+  };
+
+  const json = (route, body, status = 200) =>
+    route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+
+  // --- configured, signed out: the gate appears and can be walked past ---
+  await withAuth("gate", (route) => json(route, { ok: true, configured: true, authenticated: false }), async (page) => {
+    const heading = await page.waitForSelector("text=Sign in to sync", { timeout: 10_000 }).catch(() => null);
+    check("account: a configured deployment asks the owner to sign in", Boolean(heading));
+
+    const skip = await page.$('button:has-text("Skip")');
+    check("account: SIGNING IN IS NEVER REQUIRED TO STUDY", Boolean(skip));
+    if (!skip) return;
+    await skip.click();
+    const start = await page.waitForSelector('button:has-text("Start 7 minutes")', { timeout: 10_000 }).catch(() => null);
+    check("account: skipping leads to a usable session", Boolean(start));
+    if (start) {
+      await start.click();
+      check("account: a skipped learner can still be issued a task", Boolean(await page.$("#answer")));
+    }
+  });
+
+  // --- a wrong passphrase is reported, and does not let anyone in ---
+  await withAuth("wrong", async (route) => {
+    if (route.request().method() === "POST") return json(route, { ok: false, error: "nope" }, 401);
+    return json(route, { ok: true, configured: true, authenticated: false });
+  }, async (page) => {
+    await page.waitForSelector("#passphrase", { timeout: 10_000 });
+    await page.fill("#passphrase", "not-the-passphrase");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    const alert = await page.waitForSelector('[role="alert"]', { timeout: 10_000 }).catch(() => null);
+    check("account: a wrong passphrase is reported", Boolean(alert));
+    check("account: and does not let anyone through",
+      Boolean(await page.$("#passphrase")), "the gate should still be showing");
+  });
+
+  // --- the right passphrase gets in ---
+  await withAuth("right", async (route) => {
+    if (route.request().method() === "POST") return json(route, { ok: true, authenticated: true });
+    return json(route, { ok: true, configured: true, authenticated: false });
+  }, async (page) => {
+    await page.waitForSelector("#passphrase", { timeout: 10_000 });
+    await page.fill("#passphrase", "the-correct-passphrase");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    const start = await page.waitForSelector('button:has-text("Start 7 minutes")', { timeout: 10_000 }).catch(() => null);
+    check("account: the right passphrase signs in", Boolean(start));
+  });
+
+  // --- unconfigured: no gate at all, because there is nothing to sign in to ---
+  await withAuth("unconfigured", (route) => json(route, { ok: true, configured: false, authenticated: false }), async (page) => {
+    await page.waitForTimeout(400);
+    check("account: an unconfigured deployment never shows a lock screen",
+      (await page.$("#passphrase")) === null && Boolean(await page.$('button:has-text("Start 7 minutes")')));
+  });
+
+  // --- the gate must be accessible too ---
+  await withAuth("a11y", (route) => json(route, { ok: true, configured: true, authenticated: false }), async (page) => {
+    await page.waitForSelector("#passphrase", { timeout: 10_000 });
+    await audit(page, "sign in");
+  });
+}
+
 async function run() {
   const engine = ENGINES[browserArg];
   if (!engine) throw new Error(`unknown browser: ${browserArg}`);
@@ -266,6 +356,7 @@ async function run() {
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));
 
   await audioGate(browser);
+  await accountGate(browser);
 
   await browser.close();
 

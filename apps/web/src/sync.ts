@@ -46,7 +46,9 @@ export type SyncState =
   /** On, but the last attempt failed — the app carries on regardless. */
   | "unreachable"
   /** On, and local and remote histories disagree. Nothing was overwritten. */
-  | "diverged";
+  | "diverged"
+  /** On and configured, but this device is not signed in to the account. */
+  | "signed-out";
 
 export interface SyncStatus {
   state: SyncState;
@@ -86,7 +88,9 @@ export function setSyncEnabled(on: boolean): void {
 
 async function call(path: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   try {
-    const res = await fetch(`${ENDPOINT}${path}`, init);
+    // same-origin so the session cookie rides along; it is HttpOnly, so this
+    // is the only way the browser can prove who it is.
+    const res = await fetch(`${ENDPOINT}${path}`, { credentials: "same-origin", ...init });
     const body = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, body: body as Record<string, unknown> };
   } catch {
@@ -115,12 +119,27 @@ export async function health(): Promise<{ configured: boolean; reachable: boolea
 }
 
 /**
+ * A 401 means "sign in", not "broken".
+ *
+ * Worth its own state: an expired session and an unreachable database look
+ * identical to a naive client, and telling a learner their backup is broken when
+ * they simply need to sign in again would send them looking for a fault that is
+ * not there.
+ */
+const SIGNED_OUT: SyncStatus = {
+  state: "signed-out",
+  localEvents: 0,
+  remoteEvents: 0,
+  detail: "Sign in to back up. Your work is safe on this device either way.",
+};
+
+/**
  * Push anything the backup does not have yet.
  *
  * Idempotent on the server via `(learner_id, local_sequence)`, so re-sending an
  * overlapping range is harmless and there is no cursor to keep in sync.
  */
-export async function pushEvents(learnerId: string, events: readonly EventEnvelope[]): Promise<SyncStatus> {
+export async function pushEvents(events: readonly EventEnvelope[]): Promise<SyncStatus> {
   if (!syncEnabled()) {
     return { state: "off", localEvents: events.length, remoteEvents: 0, detail: "Backup is off." };
   }
@@ -139,8 +158,9 @@ export async function pushEvents(learnerId: string, events: readonly EventEnvelo
     const { ok, status, body } = await call("", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ learnerId, events: chunk }),
+      body: JSON.stringify({ events: chunk }),
     });
+    if (status === 401) return { ...SIGNED_OUT, localEvents: events.length };
     if (status === 503) {
       return { state: "unconfigured", localEvents: events.length, remoteEvents: 0, detail: "No database is configured for this deployment." };
     }
@@ -171,12 +191,15 @@ export async function pushEvents(learnerId: string, events: readonly EventEnvelo
  * is safe depends on local state, and that decision belongs to the caller —
  * see `restoreIfEmpty`.
  */
-export async function fetchBackup(learnerId: string): Promise<EventEnvelope[] | undefined> {
+export async function fetchBackup(): Promise<EventEnvelope[] | "signed-out" | undefined> {
   const out: EventEnvelope[] = [];
   let since = -1;
   // Paged, because the server caps a response at one batch.
   for (let page = 0; page < 200; page++) {
-    const { ok, body } = await call(`?learner=${encodeURIComponent(learnerId)}&since=${since}`);
+    const { ok, status, body } = await call(`?since=${since}`);
+    // Distinguished from a failure: "sign in" is an action the learner can take,
+    // "the backup is broken" is not.
+    if (status === 401) return "signed-out";
     if (!ok) return undefined;
     const events = Array.isArray(body.events) ? (body.events as EventEnvelope[]) : [];
     if (events.length === 0) break;
@@ -196,7 +219,6 @@ export async function fetchBackup(learnerId: string): Promise<EventEnvelope[] | 
  * did — so this returns `diverged` and leaves both intact.
  */
 export async function restoreIfEmpty(
-  learnerId: string,
   localCount: number,
 ): Promise<{ status: SyncStatus; events?: EventEnvelope[] }> {
   if (!syncEnabled()) {
@@ -210,7 +232,8 @@ export async function restoreIfEmpty(
     return { status: { state: "unreachable", localEvents: localCount, remoteEvents: 0, detail: "Could not reach the backup." } };
   }
 
-  const remote = await fetchBackup(learnerId);
+  const remote = await fetchBackup();
+  if (remote === "signed-out") return { status: { ...SIGNED_OUT, localEvents: localCount } };
   if (!remote) {
     return { status: { state: "unreachable", localEvents: localCount, remoteEvents: 0, detail: "Could not read the backup." } };
   }
@@ -237,7 +260,7 @@ export async function restoreIfEmpty(
 }
 
 /** Erase the backup. Called whenever local data is deleted. */
-export async function deleteBackup(learnerId: string): Promise<boolean> {
-  const { ok } = await call(`?learner=${encodeURIComponent(learnerId)}`, { method: "DELETE" });
+export async function deleteBackup(): Promise<boolean> {
+  const { ok } = await call("", { method: "DELETE" });
   return ok;
 }

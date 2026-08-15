@@ -17,6 +17,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { PronounceError, pronounce, type Pronunciation } from "./pronounce.ts";
+import { Icon } from "./Icons.tsx";
 
 type Status = "idle" | "loading" | "playing" | "unavailable" | "failed";
 
@@ -87,7 +88,7 @@ export function PronounceButton({ text, speed = 1, variant = "full", label, offe
         data-audio-state={status}
         disabled={status === "unavailable"}
       >
-        <span aria-hidden="true">{status === "playing" ? "◼" : status === "loading" ? "…" : "🔊"}</span>
+        <Icon name={status === "playing" ? "stop" : "sound"} size={18} />
       </button>
     );
   }
@@ -96,6 +97,7 @@ export function PronounceButton({ text, speed = 1, variant = "full", label, offe
     <div data-audio-state={status} data-audio-rate={rate}>
       <div className="row">
         <button type="button" onClick={() => play()} aria-label={accessibleName} disabled={status === "loading"}>
+          <Icon name={status === "playing" ? "stop" : "sound"} size={17} />
           {status === "loading" ? "Preparing…" : status === "playing" ? "Stop" : "Hear it"}
         </button>
         {offerSlow && (
@@ -105,7 +107,7 @@ export function PronounceButton({ text, speed = 1, variant = "full", label, offe
             aria-label={`Hear ${label ?? text} slowly — generated voice`}
             disabled={status === "loading"}
           >
-            Slower
+            <Icon name="slower" size={17} /> Slower
           </button>
         )}
       </div>
