@@ -17,6 +17,8 @@ import {
   computeHskProgress, currentBand, loadHskBands,
   type BandProgress, type HskBandData, type HskScheme, type WordState,
 } from "./hsk.ts";
+import { PronounceButton } from "./PronounceButton.tsx";
+import { audioReadiness, type AudioReadiness } from "./pronounce.ts";
 
 const STATE_LABEL: Record<WordState, string> = {
   known: "Known",
@@ -155,6 +157,15 @@ function Band({ band, open, onToggle }: { band: BandProgress; open: boolean; onT
   // Only words the pack can actually teach are worth listing individually; the
   // rest is a count, because 5,000 unteachable words is not a useful list.
   const teachable = band.words.filter((w) => w.state !== "unavailable");
+  const [audio, setAudio] = useState<AudioReadiness | null>(null);
+
+  // Probed once per band, and cached globally underneath, so opening a list of
+  // several hundred words does not ask the platform several hundred times.
+  useEffect(() => {
+    let live = true;
+    audioReadiness().then((a) => { if (live) setAudio(a); });
+    return () => { live = false; };
+  }, []);
 
   return (
     <div className="card">
@@ -173,6 +184,11 @@ function Band({ band, open, onToggle }: { band: BandProgress; open: boolean; onT
           <button type="button" onClick={onToggle} aria-expanded={open} style={{ marginTop: 10 }}>
             {open ? "Hide words" : `Show ${teachable.length} word${teachable.length === 1 ? "" : "s"}`}
           </button>
+          {open && audio?.available && (
+            <p className="muted small" style={{ marginTop: 10, marginBottom: 0 }}>
+              🔊 plays a generated voice — a rough guide, not a recording to imitate.
+            </p>
+          )}
           {open && (
             <ul className="wordlist">
               {(["known", "learning", "available"] as WordState[]).flatMap((groupState) => {
@@ -187,6 +203,11 @@ function Band({ band, open, onToggle }: { band: BandProgress; open: boolean; onT
                       <span className="hanzi" lang="zh-Hans">{w.word}</span>
                       <span className="reading">{w.pinyin}</span>
                       <span className="meaning muted">{w.gloss}</span>
+                      {/* Safe here: the word, its reading and its meaning are all
+                          already on screen, so playback reveals nothing. Omitted
+                          entirely where nothing can speak, rather than offering a
+                          button that could only ever fail. */}
+                      {audio?.available && <PronounceButton text={w.word} label={w.pinyin} variant="compact" />}
                     </li>
                   )),
                 ];

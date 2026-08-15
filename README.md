@@ -205,15 +205,32 @@ answer, and its hash is part of the pack's `contentHash`: swapping a recording
 necessarily mints a new pack version. The browser re-verifies the bytes before
 playing them; a corrupted or missing recording makes the task unanswerable rather
 than producing retrieval evidence for audio the learner never heard. Synthetic
-speech (CosyVoice) can never satisfy this gate and appears only after an answer.
+speech can never satisfy this gate and appears only after an answer.
+
+**Hearing a word, which is a different thing.** Beside that gate sits a plain
+convenience: on any screen where the word is *already visible* — the Words list,
+the Result screen, Settings — "Hear it" reads it aloud in a **generated** voice,
+always labelled as such. Two sources serve it, and `pronounce()` picks: the local
+CosyVoice service when it is configured *and reachable*, otherwise the device's
+own `speechSynthesis` voice, which every phone ships free and offline. Where
+neither can speak, the control is not rendered and Settings says why. The device
+voice is chosen deliberately, not left to the platform: Cantonese is refused
+outright rather than ranked last (a Cantonese reading of a Mandarin word is a
+wrong answer said confidently), mainland Mandarin beats Taiwan, and on-device
+beats network. See ADR 0012. None of this is progress on canonical audio — a
+generated voice still cannot cue a listening task or move the listening trace.
 
 **Browser gates** (`npm run e2e`): two suites in a real browser at a mobile
 viewport with reduced motion, writing `artifacts/e2e-report.json` for the Stage 2
 gate to consume.
 
-- *Stage 2* (14 checks): 3/7/15-minute sessions, a full task→result cycle,
+- *Stage 2* (23 checks): 3/7/15-minute sessions, a full task→result cycle,
   IndexedDB restore after interruption, offline reload, tampered-pack refusal,
-  and **zero WCAG 2.1 AA violations (axe-core) on all five screens**.
+  **zero WCAG 2.1 AA violations (axe-core) on all five screens**, and the
+  generated-voice path under three stubbed devices — a Mandarin voice (playback
+  is offered, speaks the right text, tagged `zh-CN`, and "Slower" really lowers
+  the rate), a Cantonese-only device (offered nothing at all), and a device with
+  no Chinese voice (told so, rather than shown a button that could only fail).
 - *Canonical listening* (24 checks): content-addressed audio with full
   provenance, a generically-labelled play control, no transcript/hanzi/gloss/id
   in the DOM or any accessible name, real playback with honestly-counted

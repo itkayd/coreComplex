@@ -14,8 +14,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SKILLS, type Lexeme, type Skill, type TaskContract } from "@dyr/domain";
 import type { Plan, SubmitResult } from "@dyr/kernel";
 import { audioUrl, resolveCanonicalAudio, type AudioAsset } from "@dyr/content/runtime";
-import { SyntheticAudioButton } from "./SyntheticAudioButton.tsx";
-import { SPEECH_AVAILABLE } from "./speech.ts";
+import { PronounceButton } from "./PronounceButton.tsx";
+import { audioReadiness, resetAudioReadiness, type AudioReadiness } from "./pronounce.ts";
 import { health, setSyncEnabled, syncEnabled, type SyncStatus } from "./sync.ts";
 import { CanonicalAudioCue, type CueStatus } from "./CanonicalAudioCue.tsx";
 import { Words } from "./Words.tsx";
@@ -383,9 +383,11 @@ function Result({ result, task, expected, pack, position, total, onNext }: {
 
         {/* Synthetic playback lives here, AFTER the answer, so it can never
             become a listening cue or count as canonical pronunciation. */}
-        {lexeme && SPEECH_AVAILABLE && (
+        {lexeme && (
           <div className="card">
-            <SyntheticAudioButton text={lexeme.simplified} />
+            {/* Half speed is a study aid for a word already on screen — the same
+                word, given time, not a different one. */}
+            <PronounceButton text={lexeme.simplified} label={lexeme.pinyin} offerSlow />
           </div>
         )}
 
@@ -484,10 +486,12 @@ function Settings({ state }: { state: SessionState }) {
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const [audio, setAudio] = useState<AudioReadiness | null>(null);
 
   useEffect(() => {
     let live = true;
     health().then((h) => { if (live) setAvailable(h.configured); }).catch(() => { if (live) setAvailable(false); });
+    audioReadiness().then((a) => { if (live) setAudio(a); });
     return () => { live = false; };
   }, []);
   const canonical = state.pack.lexemes.filter((l) => {
@@ -608,6 +612,40 @@ function Settings({ state }: { state: SessionState }) {
             each with its licence and content hash.
           </p>
         </details>
+      </div>
+
+      {/* Sound is explained rather than merely offered: a learner has to know
+          which of the two very different things they are hearing. */}
+      <div className="card">
+        <h2>Sound</h2>
+        <p className="muted small">
+          Dyr uses audio two ways, and they are not interchangeable. <strong>Listening tasks</strong> play
+          verified human recordings only — never a generated voice — which is why a word with no
+          recording is never used for listening. <strong>Hear it</strong>, on a word you are already
+          looking at, uses a generated voice: handy for a rough shape, not something to imitate.
+        </p>
+        <dl className="facts">
+          <dt>Human recordings</dt><dd>{canonical} / {state.pack.lexemes.length}</dd>
+          <dt>Generated voice</dt>
+          <dd>{audio === null ? "checking…" : audio.available ? audio.description : "none on this device"}</dd>
+        </dl>
+        {audio?.available && (
+          <div style={{ marginTop: 12 }}>
+            <PronounceButton text="你好" label="ni hao" offerSlow />
+          </div>
+        )}
+        {audio && !audio.available && (
+          <p className="small muted" style={{ marginTop: 10, marginBottom: 0 }}>
+            This browser has no Mandarin voice installed, so &ldquo;Hear it&rdquo; is unavailable.
+            On Android add a Chinese voice under Settings &rarr; Language &amp; input &rarr;
+            Text-to-speech; on desktop Linux, install a zh-CN speech-dispatcher voice. Everything
+            else works without it.
+          </p>
+        )}
+        <button type="button" style={{ marginTop: 12 }}
+          onClick={() => { resetAudioReadiness(); setAudio(null); audioReadiness().then(setAudio); }}>
+          Re-check voices
+        </button>
       </div>
 
       <div className="card">

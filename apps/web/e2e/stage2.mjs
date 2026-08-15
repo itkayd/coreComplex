@@ -68,6 +68,126 @@ async function answerCurrentTask(page) {
   await page.waitForSelector('button:has-text("Next")', { timeout: 15_000 });
 }
 
+/**
+ * The "Hear it" path, which cannot be tested any other way.
+ *
+ * Headless Chromium ships no speech voices at all, so the real browser exercises
+ * only the DEGRADED path — which is worth checking, but proves nothing about the
+ * behaviour a learner on a phone gets. So `speechSynthesis` is stubbed with a
+ * known voice list and every `speak()` call is recorded, which lets this gate
+ * assert the three things that actually matter:
+ *
+ *   1. with a Mandarin voice, the word list offers playback and speaking a word
+ *      passes the right TEXT at the right LANG (a zh-CN utterance, not the page's
+ *      English default, which is what silently reads hanzi as gibberish);
+ *   2. with only a Cantonese voice, nothing is offered — a Cantonese reading of a
+ *      Mandarin word is a wrong answer delivered confidently;
+ *   3. with no voice, the UI says so instead of showing a button that can only
+ *      ever fail.
+ */
+async function audioGate(browser) {
+  const scenario = async (label, voices, assert) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await context.addInitScript((list) => {
+      const spoken = [];
+      window.__spoken = spoken;
+      class FakeUtterance {
+        constructor(text) { this.text = text; this.lang = ""; this.rate = 1; this.voice = null; }
+      }
+      window.SpeechSynthesisUtterance = FakeUtterance;
+      // `speechSynthesis` is a read-only accessor on window, so a plain
+      // assignment is silently dropped and the stub never takes effect.
+      Object.defineProperty(window, "speechSynthesis", {
+        configurable: true,
+        value: {
+          getVoices: () => list,
+          speak(u) {
+            spoken.push({ text: u.text, lang: u.lang, rate: u.rate, voice: u.voice?.name ?? null });
+            setTimeout(() => u.onend?.(), 5);
+          },
+          cancel() {},
+          addEventListener() {},
+          removeEventListener() {},
+        },
+      });
+    }, voices);
+    const page = await context.newPage();
+    await page.goto(BASE, { waitUntil: "networkidle" });
+    await page.waitForSelector("button");
+    try {
+      await assert(page, label);
+    } finally {
+      await context.close();
+    }
+  };
+
+  const mandarin = [{ name: "Ting-Ting", lang: "zh-CN", localService: true, default: false }];
+  const cantonese = [{ name: "Sin-ji", lang: "zh-HK", localService: true, default: false }];
+
+  await scenario("mandarin", mandarin, async (page) => {
+    await page.getByRole("button", { name: "Words" }).click();
+    await page.waitForSelector(".hsk-bar", { timeout: 15_000 });
+    const show = await page.$('button:has-text("Show ")');
+    if (show) await show.click();
+    const button = await page.waitForSelector(".pronounce-compact", { timeout: 10_000 }).catch(() => null);
+    check("audio: a Mandarin device voice offers playback in the word list", Boolean(button));
+    if (!button) return;
+
+    // The word beside the button is the text that must be spoken.
+    const expected = await button.evaluate((el) => el.closest(".word")?.querySelector(".hanzi")?.textContent ?? "");
+    await button.click();
+    await page.waitForFunction(() => (window.__spoken ?? []).length > 0, null, { timeout: 5000 }).catch(() => {});
+    const spoken = await page.evaluate(() => window.__spoken ?? []);
+    check("audio: playing a word speaks that word", spoken[0]?.text === expected,
+      `spoke ${JSON.stringify(spoken[0]?.text)}, expected ${JSON.stringify(expected)}`);
+    check("audio: the utterance is tagged Mandarin, not the page language",
+      spoken[0]?.lang === "zh-CN" && spoken[0]?.voice === "Ting-Ting",
+      `lang=${spoken[0]?.lang} voice=${spoken[0]?.voice}`);
+
+    // And the result screen offers the slower replay, at a real slower rate.
+    await page.goto(BASE, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /Start 7 minutes/ }).click();
+    await answerCurrentTask(page);
+    await page.evaluate(() => { window.__spoken.length = 0; });
+    const slower = await page.$('button:has-text("Slower")');
+    check("audio: the result screen offers a slower replay", Boolean(slower));
+    if (slower) {
+      await slower.click();
+      await page.waitForFunction(() => (window.__spoken ?? []).length > 0, null, { timeout: 5000 }).catch(() => {});
+      const rate = (await page.evaluate(() => window.__spoken ?? []))[0]?.rate;
+      check("audio: slower actually lowers the rate", typeof rate === "number" && rate < 1, `rate=${rate}`);
+    }
+  });
+
+  await scenario("cantonese", cantonese, async (page) => {
+    await page.getByRole("button", { name: "Words" }).click();
+    await page.waitForSelector(".hsk-bar", { timeout: 15_000 });
+    const show = await page.$('button:has-text("Show ")');
+    if (show) await show.click();
+    await page.waitForTimeout(500);
+    const offered = await page.$(".pronounce-compact");
+    check("audio: a Cantonese-only device is offered NOTHING", offered === null);
+  });
+
+  await scenario("none", [], async (page) => {
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.waitForSelector("h1");
+    // An empty voice list is the one case that waits out `loadVoices`' timeout:
+    // the platform may still deliver voices on `voiceschanged`, so "none" is only
+    // concluded after that window closes.
+    await page.waitForFunction(
+      () => !/checking…/.test(document.body.textContent ?? ""),
+      null,
+      { timeout: 8000 },
+    ).catch(() => {});
+    const text = ((await page.textContent("body")) ?? "").replace(/\s+/g, " ");
+    check("audio: a device with no Mandarin voice is told so",
+      /no Mandarin voice installed/i.test(text), text.slice(0, 80));
+    check("audio: and is not shown a control that could only fail",
+      (await page.$(".pronounce-compact")) === null);
+  });
+}
+
 async function run() {
   const engine = ENGINES[browserArg];
   if (!engine) throw new Error(`unknown browser: ${browserArg}`);
@@ -144,6 +264,8 @@ async function run() {
   await context.unroute("**/packs/dyr-core60.json");
 
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));
+
+  await audioGate(browser);
 
   await browser.close();
 

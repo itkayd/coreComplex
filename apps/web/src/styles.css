@@ -472,7 +472,9 @@ button.selected:hover:not(:disabled) { background: var(--reading-ink); border-co
 .wordlist-head:first-child { margin-top: 0; }
 .word {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  /* Fourth column is the play button; `auto` keeps it at its own width so a long
+     gloss wraps rather than pushing it off a narrow phone. */
+  grid-template-columns: auto auto 1fr auto;
   align-items: baseline;
   gap: 10px;
   padding: 7px 0 7px 12px;
@@ -489,3 +491,27 @@ button.selected:hover:not(:disabled) { background: var(--reading-ink); border-co
 }
 .word .reading { font-size: 0.875rem; color: var(--muted); }
 .word .meaning { font-size: 0.875rem; min-width: 0; overflow-wrap: anywhere; }
+
+/*
+ * The per-word play control. 44px is not a rounding of "looks about right": it
+ * is the minimum comfortable touch target, and this button sits in a dense list
+ * on a phone. The glyph is smaller than the target, which is the point.
+ */
+.pronounce-compact {
+  align-self: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.pronounce-compact:hover:not(:disabled) { border-color: var(--line-strong); color: var(--fg); }
+.pronounce-compact[data-audio-state="playing"] { border-color: var(--listening); color: var(--listening); }
+.pronounce-compact:disabled { opacity: 0.4; }
