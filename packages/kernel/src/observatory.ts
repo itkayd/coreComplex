@@ -15,8 +15,9 @@ import {
   type EventEnvelope,
   type Skill,
   type SkillTrace,
-  retrievability,
+  memoryStateOf,
 } from "@dyr/domain";
+import type { FsrsAdapter } from "@dyr/fsrs-adapter";
 import { DyrKernel } from "./kernel.ts";
 import type { FrontierProfile } from "./frontier.ts";
 import type { WorkloadReport } from "./workload.ts";
@@ -46,9 +47,11 @@ export interface ObservatoryFrame {
 
 export class Observatory {
   private readonly kernel: DyrKernel;
+  private readonly fsrs: FsrsAdapter;
   private readonly now: () => number;
-  constructor(kernel: DyrKernel, now: () => number) {
+  constructor(kernel: DyrKernel, fsrs: FsrsAdapter, now: () => number) {
     this.kernel = kernel;
+    this.fsrs = fsrs;
     this.now = now;
   }
 
@@ -57,7 +60,7 @@ export class Observatory {
       id: t.id,
       lexeme: t.lexeme,
       skill: t.skill,
-      R: Number(retrievability(t, now).toFixed(4)),
+      R: Number(this.fsrs.retrievability(memoryStateOf(t), now).toFixed(4)),
       S: Number(t.stability.toFixed(4)),
       D: Number(t.difficulty.toFixed(4)),
       state: t.state,

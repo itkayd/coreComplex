@@ -27,6 +27,7 @@ import type {
   TaskContract,
 } from "./contracts.ts";
 import type { Rating } from "./skills.ts";
+import type { MemoryState } from "./traces.ts";
 
 export const EVENT_TYPES = [
   "SessionPlanned",
@@ -35,6 +36,7 @@ export const EVENT_TYPES = [
   "EvidenceValidated",
   "TraceUpdated",
   "ConsolidationRecorded",
+  "RepairScheduled",
   "LearningFactPublished",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -88,17 +90,34 @@ export interface EvidenceValidatedPayload {
 export interface TraceUpdatedPayload {
   traceId: string;
   ratingApplied: Rating;
+  /** Rubric version that produced the accepted evidence (ADR-0004). */
+  rubricVersion: string;
+  /** FSRS adapter version that computed the update (ADR-0001). */
+  fsrsAdapterVersion: string;
   stabilityBefore: number;
-  stabilityAfter: number;
   difficultyBefore: number;
-  difficultyAfter: number;
-  dueAfter: Millis;
+  /** Full authoritative post-state — the single source replay reconstructs. */
+  memoryAfter: MemoryState;
 }
 
 export interface ConsolidationRecordedPayload {
   traceId: string;
   /** Support/interference/transfer edges touched, for explanation only. */
   transferNotes: string[];
+}
+
+/**
+ * A failed direct retrieval schedules an in-session repair opportunity for the
+ * SAME trace (ADR-0003). This never overwrites the FSRS long-term due; it is an
+ * explicit, replayable planner input.
+ */
+export interface RepairScheduledPayload {
+  traceId: string;
+  /** Earliest time the repair task may be issued (epoch millis). */
+  eligibleAt: Millis;
+  /** Repair expires if not taken by this time (epoch millis). */
+  expiresAt: Millis;
+  reason: string;
 }
 
 export interface LearningFactPublishedPayload {

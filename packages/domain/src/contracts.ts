@@ -45,12 +45,19 @@ export interface TaskContract {
   family: TaskFamily;
   /** The cue shown to the learner (e.g. an audio clip id or a hanzi prompt). */
   cue: string;
+  /** Reference to the versioned rubric this task is graded by (ADR-0004). */
+  rubricId: string;
+  rubricVersion: string;
+  /** Asset ids this exact task needs (validated at plan time, ADR/Correction 7). */
+  assetRefs: string[];
   /** Whether a canonical human recording backs this task (p.7 AUDIO RULE). */
   requiresHumanAudio: boolean;
   /** Estimated time to attempt, in seconds — used by the workload governor. */
   estSeconds: number;
   /** True for a task introducing a not-yet-seen atom (novelty ceiling, p.18). */
   isNovel: boolean;
+  /** True when this task fulfils a RepairDirective for its target (ADR-0003). */
+  isRepair: boolean;
   plannerVersion: PlannerVersion;
   packVersion: PackVersion;
 }

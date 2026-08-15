@@ -1,173 +1,197 @@
 /**
- * @dyr/fsrs-adapter — the ONLY package that owns FSRS memory-parameter maths.
+ * @dyr/fsrs-adapter — the ONLY package that imports `ts-fsrs`.
  *
  * Spec p.14: "Use FSRS as an adapter, not as the whole brain." ts-fsrs owns
  * memory-parameter updates; the Dyr kernel owns evidence validity, trace
  * identity, constraints, progression and explanations.
  *
- * Spec p.16 (Adapter Rules):
- *   - Pin a stable ts-fsrs release in the lockfile.
- *   - Keep library types out of domain contracts.
- *   - Use an injected clock and deterministic randomness.
- *   - Store adapter version and configuration hash on updates.
- *   - Never copy demo equations from the observatory HTML.
+ * ADR-0001 (real ts-fsrs), ADR-0002 (single retrievability authority),
+ * ADR-0003 (short-term repair via learning/relearning steps).
  *
- * This file implements the published FSRS-4.5 default algorithm directly so
- * the kernel is provable offline with no network install. It is deliberately
- * shaped as a provider: swapping in the real `ts-fsrs` package means replacing
- * the body of `scheduleReview` with a call into the pinned library while
- * keeping this exact interface. The kernel depends only on `FsrsAdapter`.
+ * Library: ts-fsrs 5.4.1 (MIT), github.com/open-spaced-repetition/ts-fsrs
+ * (spec p.32 #14). Determinism: fuzz is disabled and the clock is injected, so
+ * `scheduleReview` is a pure function of (state, rating, now). ts-fsrs types
+ * never cross this boundary — the kernel sees only domain-neutral `MemoryState`.
  */
-import type { Rating } from "@dyr/domain";
-import { RATING_VALUE } from "@dyr/domain";
+import {
+  createEmptyCard,
+  fsrs,
+  generatorParameters,
+  FSRSVersion,
+  Rating as TsRating,
+  State as TsState,
+  type Card,
+  type FSRS,
+  type FSRSParameters,
+  type Grade,
+} from "ts-fsrs";
+import {
+  type MemoryState,
+  type Millis,
+  type Rating,
+  type TraceState,
+  RATING_VALUE,
+  hashValue,
+} from "@dyr/domain";
 
-export type Millis = number;
 const DAY = 86_400_000;
 
-/** Opaque-to-the-kernel memory state for one skill direction. */
-export interface MemoryState {
-  stability: number;
-  difficulty: number;
-  state: "new" | "learning" | "review" | "relearning";
-  lastReview?: Millis;
-}
-
 export interface ScheduleResult {
-  stability: number;
-  difficulty: number;
-  state: "new" | "learning" | "review" | "relearning";
-  due: Millis;
+  state: MemoryState;
   /** Retrievability observed at the moment of this review (for the LearningFact). */
   retrievabilityAtReview: number;
 }
 
+/** Domain-facing scheduler contract. The kernel depends only on this. */
 export interface FsrsAdapter {
   readonly version: string;
-  /** Pure: same inputs -> same output. No clock, no RNG inside. */
+  /** Serialisable config metadata, persisted so decisions are reproducible. */
+  readonly parameters: FsrsAdapterParameters;
+  /** A fresh, never-reviewed memory state. */
+  initialState(): MemoryState;
+  /** Pure: same (state, rating, now) → same result. */
   scheduleReview(state: MemoryState, rating: Rating, now: Millis): ScheduleResult;
-  /** Retrievability of a state at time `now`. */
+  /** Retrievability of a state at `now`, in [0,1]. The single authority. */
   retrievability(state: MemoryState, now: Millis): number;
 }
 
-/**
- * Published FSRS-4.5 default weights (17 parameters). These are documented
- * defaults, not invented weights (spec p.16 Calibration). A real deployment
- * would optimise these against clean personal evidence and pin the result.
- */
-export const FSRS_45_DEFAULT_WEIGHTS: readonly number[] = [
-  0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05,
-  0.34, 1.26, 0.29, 2.61,
-];
-
-const DECAY = -0.5;
-const FACTOR = 19 / 81; // 0.9^(1/DECAY) - 1
-
-const clamp = (x: number, lo: number, hi: number): number =>
-  Math.min(hi, Math.max(lo, x));
+export interface FsrsAdapterParameters {
+  library: "ts-fsrs";
+  libraryVersion: string;
+  requestRetention: number;
+  maximumIntervalDays: number;
+  enableShortTerm: boolean;
+  enableFuzz: false;
+  learningSteps: readonly string[];
+  relearningSteps: readonly string[];
+  /** Deterministic hash of the effective ts-fsrs parameters. */
+  configHash: string;
+}
 
 export interface FsrsConfig {
-  weights?: readonly number[];
   requestRetention?: number;
-  /** Maximum scheduled interval in days. */
   maximumIntervalDays?: number;
-  version?: string;
+  /** Learning steps (spec/ADR-0003 short-term repair). */
+  learningSteps?: readonly string[];
+  relearningSteps?: readonly string[];
+  /** Optional pinned weights; defaults to ts-fsrs library defaults. */
+  weights?: readonly number[];
+}
+
+const STATE_TO_TS: Record<TraceState, TsState> = {
+  new: TsState.New,
+  learning: TsState.Learning,
+  review: TsState.Review,
+  relearning: TsState.Relearning,
+};
+const TS_TO_STATE: Record<TsState, TraceState> = {
+  [TsState.New]: "new",
+  [TsState.Learning]: "learning",
+  [TsState.Review]: "review",
+  [TsState.Relearning]: "relearning",
+};
+
+function ratingToGrade(rating: Rating): Grade {
+  // Domain RATING_VALUE (again=1..easy=4) matches ts-fsrs Rating enum values.
+  return RATING_VALUE[rating] as unknown as Grade;
 }
 
 export function createFsrsAdapter(config: FsrsConfig = {}): FsrsAdapter {
-  const w = config.weights ?? FSRS_45_DEFAULT_WEIGHTS;
-  const requestRetention = config.requestRetention ?? 0.9;
-  const maxInterval = config.maximumIntervalDays ?? 36500;
-  const version = config.version ?? "dyr-fsrs-adapter@1.0.0";
+  const params: FSRSParameters = generatorParameters({
+    request_retention: config.requestRetention ?? 0.9,
+    maximum_interval: config.maximumIntervalDays ?? 36500,
+    enable_fuzz: false, // determinism (ADR-0001)
+    enable_short_term: true, // short-term repair (ADR-0003)
+    ...(config.learningSteps ? { learning_steps: config.learningSteps } : {}),
+    ...(config.relearningSteps ? { relearning_steps: config.relearningSteps } : {}),
+    ...(config.weights ? { w: config.weights } : {}),
+  });
+  const engine: FSRS = fsrs(params);
 
-  const initDifficulty = (g: number): number => clamp(w[4] - w[5] * (g - 3), 1, 10);
-  const initStability = (g: number): number => Math.max(w[g - 1], 0.1);
-
-  const retrievabilityFrom = (stability: number, elapsedDays: number): number => {
-    if (stability <= 0) return 0;
-    return Math.pow(1 + (FACTOR * elapsedDays) / stability, DECAY);
+  const parameters: FsrsAdapterParameters = {
+    library: "ts-fsrs",
+    libraryVersion: FSRSVersion,
+    requestRetention: params.request_retention,
+    maximumIntervalDays: params.maximum_interval,
+    enableShortTerm: params.enable_short_term,
+    enableFuzz: false,
+    learningSteps: params.learning_steps as readonly string[],
+    relearningSteps: params.relearning_steps as readonly string[],
+    configHash: hashValue({
+      w: params.w,
+      r: params.request_retention,
+      m: params.maximum_interval,
+      ls: params.learning_steps,
+      rs: params.relearning_steps,
+      st: params.enable_short_term,
+    }),
   };
+  const version = `dyr-fsrs-adapter@2.0.0/ts-fsrs@${FSRSVersion}#${parameters.configHash}`;
 
-  const nextIntervalDays = (stability: number): number => {
-    const days = (stability / FACTOR) * (Math.pow(requestRetention, 1 / DECAY) - 1);
-    return clamp(Math.round(days), 1, maxInterval);
-  };
+  /** Reconstruct a ts-fsrs Card from domain-neutral MemoryState. */
+  function toCard(state: MemoryState, now: Millis): Card {
+    if (state.state === "new" || state.lastReview === undefined) {
+      return createEmptyCard(new Date(now));
+    }
+    return {
+      due: new Date(state.due ?? now),
+      stability: state.stability,
+      difficulty: state.difficulty,
+      elapsed_days: 0, // recomputed by ts-fsrs from last_review
+      scheduled_days: state.scheduledDays,
+      learning_steps: state.learningSteps,
+      reps: state.reps,
+      lapses: state.lapses,
+      state: STATE_TO_TS[state.state],
+      last_review: new Date(state.lastReview),
+    };
+  }
 
-  const nextDifficulty = (d: number, g: number): number => {
-    const damped = d - w[6] * (g - 3);
-    const reverted = w[7] * initDifficulty(4) + (1 - w[7]) * damped;
-    return clamp(reverted, 1, 10);
-  };
-
-  const stabilityAfterRecall = (
-    d: number,
-    s: number,
-    r: number,
-    g: number,
-  ): number => {
-    const hardPenalty = g === 2 ? w[15] : 1;
-    const easyBonus = g === 4 ? w[16] : 1;
-    const inc =
-      Math.exp(w[8]) *
-      (11 - d) *
-      Math.pow(s, -w[9]) *
-      (Math.exp(w[10] * (1 - r)) - 1) *
-      hardPenalty *
-      easyBonus;
-    return s * (1 + inc);
-  };
-
-  const stabilityAfterLapse = (d: number, s: number, r: number): number => {
-    const sf =
-      w[11] *
-      Math.pow(d, -w[12]) *
-      (Math.pow(s + 1, w[13]) - 1) *
-      Math.exp(w[14] * (1 - r));
-    // A lapse must never increase stability.
-    return Math.min(sf, s);
-  };
+  function fromCard(card: Card): MemoryState {
+    return {
+      stability: card.stability,
+      difficulty: card.difficulty,
+      state: TS_TO_STATE[card.state],
+      due: card.due.getTime(),
+      lastReview: card.last_review ? card.last_review.getTime() : undefined,
+      reps: card.reps,
+      lapses: card.lapses,
+      learningSteps: card.learning_steps,
+      scheduledDays: card.scheduled_days,
+    };
+  }
 
   return {
     version,
+    parameters,
 
-    retrievability(state, now) {
-      if (state.state === "new" || state.lastReview === undefined) return 0;
-      const elapsedDays = (now - state.lastReview) / DAY;
-      return retrievabilityFrom(state.stability, Math.max(0, elapsedDays));
+    initialState(): MemoryState {
+      return {
+        stability: 0,
+        difficulty: 0,
+        state: "new",
+        reps: 0,
+        lapses: 0,
+        learningSteps: 0,
+        scheduledDays: 0,
+      };
     },
 
-    scheduleReview(state, rating, now) {
-      const g = RATING_VALUE[rating];
-      let stability: number;
-      let difficulty: number;
-      let retrievabilityAtReview: number;
+    retrievability(state: MemoryState, now: Millis): number {
+      if (state.state === "new" || state.lastReview === undefined) return 0;
+      return engine.get_retrievability(toCard(state, now), new Date(now), false);
+    },
 
-      if (state.state === "new" || state.lastReview === undefined) {
-        // First review of this trace.
-        stability = initStability(g);
-        difficulty = initDifficulty(g);
-        retrievabilityAtReview = 0;
-      } else {
-        const elapsedDays = Math.max(0, (now - state.lastReview) / DAY);
-        const r = retrievabilityFrom(state.stability, elapsedDays);
-        retrievabilityAtReview = r;
-        difficulty = nextDifficulty(state.difficulty, g);
-        stability =
-          g === 1
-            ? stabilityAfterLapse(state.difficulty, state.stability, r)
-            : stabilityAfterRecall(state.difficulty, state.stability, r, g);
-      }
-
-      stability = Math.max(stability, 0.1);
-      const nextState: MemoryState["state"] = g === 1 ? "relearning" : "review";
-      const due = now + nextIntervalDays(stability) * DAY;
-
-      return {
-        stability,
-        difficulty,
-        state: nextState,
-        due,
-        retrievabilityAtReview,
-      };
+    scheduleReview(state: MemoryState, rating: Rating, now: Millis): ScheduleResult {
+      const card = toCard(state, now);
+      const retrievabilityAtReview =
+        state.state === "new" || state.lastReview === undefined
+          ? 0
+          : engine.get_retrievability(card, new Date(now), false);
+      const { card: nextCard } = engine.next(card, new Date(now), ratingToGrade(rating));
+      return { state: fromCard(nextCard), retrievabilityAtReview };
     },
   };
 }
+
+export type { MemoryState } from "@dyr/domain";

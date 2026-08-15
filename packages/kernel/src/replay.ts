@@ -51,14 +51,12 @@ export function replayTraces(events: readonly EventEnvelope[]): TraceStore {
     const { lexeme, skill } = parseTraceId(p.traceId);
     const existing = store.get(p.traceId as SkillTrace["id"]) ??
       newTrace(p.traceId as SkillTrace["id"], lexeme, skill);
+    // memoryAfter is the full authoritative post-state (ADR-0001) — replay just
+    // applies it, so it can never drift from the live kernel's own maths.
     store.put({
       ...existing,
-      stability: p.stabilityAfter,
-      difficulty: p.difficultyAfter,
-      due: p.dueAfter,
-      // A relearning state follows an "again"; otherwise the trace is in review.
-      state: p.ratingApplied === "again" ? "relearning" : "review",
-      lastReview: e.occurredAt,
+      ...p.memoryAfter,
+      lastReview: p.memoryAfter.lastReview ?? e.occurredAt,
       evidenceCount: existing.evidenceCount + 1,
       eventCursor: e.localSequence,
     });

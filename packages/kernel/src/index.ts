@@ -10,7 +10,6 @@ export { TraceStore } from "./traceStore.ts";
 export { EventLog } from "./eventLog.ts";
 export { evaluateEvidence } from "./evidence.ts";
 export type { EvidenceResult, ValidationInput } from "./evidence.ts";
-export { assessWorkload } from "./workload.ts";
 export type { WorkloadReport, HorizonForecast, RecallScenario } from "./workload.ts";
 export { Frontier, isRetained } from "./frontier.ts";
 export type {
@@ -20,9 +19,14 @@ export type {
   AdmissionResult,
 } from "./frontier.ts";
 export { Planner, PLANNER_VERSION } from "./planner.ts";
-export type { Plan, PlanRequest, CandidateScore } from "./planner.ts";
+export type { Plan, PlanRequest, CandidateScore, RejectedCandidate } from "./planner.ts";
+export { buildRubric, RUBRIC_VERSION } from "./rubrics.ts";
+export { checkTaskAssets } from "./assets.ts";
+export type { AssetProvider, AssetGateResult, AssetReasonCode } from "./assets.ts";
+export { assessWorkload, WORKLOAD_SCENARIOS_VERSION } from "./workload.ts";
 export { DyrKernel } from "./kernel.ts";
 export type { KernelDeps, SubmitResult } from "./kernel.ts";
+export type { SpeechSignal } from "./evidence.ts";
 export { replayTraces, verifyReplay } from "./replay.ts";
 export { Observatory } from "./observatory.ts";
 export type { ObservatoryFrame, TraceSnapshot } from "./observatory.ts";

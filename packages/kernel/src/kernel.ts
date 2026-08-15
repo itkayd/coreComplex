@@ -1,22 +1,22 @@
 /**
- * DyrKernel — the headless learning brain (spec p.3: "The kernel is the brain;
- * everything else is a layer").
+ * DyrKernel — the headless learning brain (spec p.3).
  *
- * It runs the eight observable phases of one review (spec p.5):
- *   DECAY -> PLAN -> CUE -> RETRIEVE -> EVIDENCE -> UPDATE -> CONSOLIDATE -> FACT
- * and emits the causal event chain (spec p.5):
- *   AttemptAccepted -> EvidenceValidated -> TraceUpdated
- *   -> ConsolidationRecorded -> LearningFactPublished
+ * Runs the eight observable phases (spec p.5) and emits the causal chain
+ * (ADR-0008): AttemptAccepted →(causation) EvidenceValidated →(causation)
+ * TraceUpdated →(causation) ConsolidationRecorded →(causation)
+ * LearningFactPublished. Reject / self-grade attempts terminate at
+ * EvidenceValidated with no TraceUpdated or Fact.
  *
- * Invariants enforced here:
- *   Rule 2 (One Update): an accepted attempt changes exactly one SkillTrace.
- *   Rule 3 (Headless):   no UI/game/provider import; runs and replays alone.
- *   Rule 4 (One-way):    LearningFacts are published outward, never read back.
+ * Invariants: Rule 1 (four traces), Rule 2 (one update, guarded), Rule 3
+ * (headless — no UI/layer/provider-impl imports), Rule 4 (one-way facts).
+ * Commands are idempotent on a durable client key (ADR-0007). Failed retrievals
+ * schedule an explicit, replayable RepairDirective (ADR-0003).
  */
 import {
   type AttemptEnvelope,
   type AttemptId,
   type Clock,
+  type CommandOutcome,
   type DeviceId,
   type EventId,
   type FactId,
@@ -26,21 +26,29 @@ import {
   type LearningFact,
   type LexemeId,
   type RawAttempt,
+  type RepairDirective,
   type Skill,
   type SkillTrace,
+  type SubmitAttemptCommand,
   type TaskContract,
   type TaskId,
+  type TraceId,
+  commandPayloadHash,
   configurationHash,
   deriveSeed,
-  retrievability,
+  makeRepairDirective,
+  memoryStateOf,
+  traceId,
 } from "@dyr/domain";
-import { type FsrsAdapter, type MemoryState } from "@dyr/fsrs-adapter";
+import { type FsrsAdapter } from "@dyr/fsrs-adapter";
 import { TraceStore } from "./traceStore.ts";
 import { EventLog } from "./eventLog.ts";
-import { evaluateEvidence, type EvidenceResult } from "./evidence.ts";
+import { evaluateEvidence, type EvidenceResult, type SpeechSignal } from "./evidence.ts";
 import { assessWorkload, type WorkloadReport } from "./workload.ts";
-import { Frontier, type AdmissionContext } from "./frontier.ts";
-import { Planner, PLANNER_VERSION, type Plan, type PlanRequest } from "./planner.ts";
+import { Frontier } from "./frontier.ts";
+import { Planner, PLANNER_VERSION, type Plan } from "./planner.ts";
+import { buildRubric } from "./rubrics.ts";
+import { type AssetProvider } from "./assets.ts";
 
 export interface KernelDeps {
   learnerId: LearnerId;
@@ -49,10 +57,7 @@ export interface KernelDeps {
   graph: LanguageGraph;
   fsrs: FsrsAdapter;
   config: KernelConfig;
-  admission: Pick<
-    AdmissionContext,
-    "licensed" | "humanAudioAvailable" | "knownTokenRatio"
-  >;
+  assets: AssetProvider;
 }
 
 export interface SubmitResult {
@@ -60,24 +65,33 @@ export interface SubmitResult {
   decision: EvidenceResult["decision"];
   fact?: LearningFact;
   updatedTrace?: SkillTrace;
+  repair?: RepairDirective;
+}
+
+interface CommandRecord {
+  payloadHash: string;
+  result: SubmitResult;
 }
 
 export class DyrKernel {
   readonly traces = new TraceStore();
   readonly log = new EventLog();
+  readonly frontier: Frontier;
   private readonly configHash: string;
   private readonly planner: Planner;
-  readonly frontier: Frontier;
   private readonly facts: LearningFact[] = [];
   private readonly answerKey = new Map<TaskId, string>();
-  private readonly signalKey = new Map<TaskId, number>();
+  private readonly signalKey = new Map<TaskId, SpeechSignal>();
+  private readonly repairs = new Map<string, RepairDirective>();
+  private readonly seenCommands = new Map<string, CommandRecord>();
   private correlation?: EventId;
+  private autoCounter = 0;
   private readonly deps: KernelDeps;
 
   constructor(deps: KernelDeps) {
     this.deps = deps;
     this.configHash = configurationHash(deps.config);
-    this.planner = new Planner(this.traces, deps.graph, deps.config, this.configHash);
+    this.planner = new Planner(this.traces, deps.graph, deps.config, this.configHash, deps.fsrs, deps.assets);
     this.frontier = new Frontier(this.traces, deps.graph);
   }
 
@@ -86,55 +100,62 @@ export class DyrKernel {
     return (first?.packVersion ?? "pack@0") as TaskContract["packVersion"];
   }
 
-  /** DECAY: read-only current-retrievability view (no writes). */
-  retrievabilityOf(lexeme: LexemeId, skill: Skill): number {
-    const t = this.traces.get(`${lexeme}::${skill}` as SkillTrace["id"]);
-    return t ? retrievability(t, this.deps.clock.now()) : 0;
+  private now(): number {
+    return this.deps.clock.now();
   }
 
-  /** Workload governor report at the current instant. */
+  /** Retrievability via the single authority (ADR-0002). */
+  retrievabilityOf(lexeme: LexemeId, skill: Skill): number {
+    const t = this.traces.get(traceId(lexeme, skill));
+    return t ? this.deps.fsrs.retrievability(memoryStateOf(t), this.now()) : 0;
+  }
+
   workload(opts?: { weakConfidence?: boolean }): WorkloadReport {
-    return assessWorkload(this.traces.all(), this.deps.clock.now(), this.deps.config, {
+    return assessWorkload(this.traces.all(), this.now(), this.deps.config, this.deps.fsrs, {
       weakConfidence: opts?.weakConfidence,
     });
   }
 
-  /**
-   * PLAN + CUE. Produces a bounded, explainable plan and emits SessionPlanned
-   * plus one TaskCued per task. Stores the private answer key so later
-   * attempts can be validated without ever leaking answers into the contract.
-   */
+  /** Active, unexpired repair directives (planner input, ADR-0003). */
+  activeRepairs(): RepairDirective[] {
+    const now = this.now();
+    return [...this.repairs.values()].filter((d) => d.expiresAt > now);
+  }
+
+  /** PLAN + CUE. */
   planSession(input: {
     budgetMinutes: number;
-    admittedIntroductions?: LexemeId[];
+    candidateIntroductions?: LexemeId[];
     weakConfidence?: boolean;
+    requireOffline?: boolean;
   }): Plan {
-    const now = this.deps.clock.now();
+    const now = this.now();
     const workload = this.workload({ weakConfidence: input.weakConfidence });
 
-    const admitted = (input.admittedIntroductions ?? []).filter((lex) => {
-      const res = this.frontier.admit(lex, {
-        ...this.deps.admission,
+    const admitted = (input.candidateIntroductions ?? []).filter((lex) =>
+      this.frontier.admit(lex, {
+        licensed: (l) => this.deps.assets.licensed(l),
+        humanAudioAvailable: (l) => this.deps.assets.hasCanonicalAudio(l),
+        knownTokenRatio: (l) => this.deps.assets.knownTokenRatio(l),
         introductionsFrozen: workload.freezeIntroductions,
         knownTokenBand: this.deps.config.knownTokenBand,
         plannerVersion: PLANNER_VERSION,
-      });
-      return res.eligible;
-    });
+      }).eligible,
+    );
 
     const seed = deriveSeed(this.deps.learnerId, this.configHash, this.log.length, now);
-    const req: PlanRequest = {
+    const plan = this.planner.plan({
       now,
       budgetMinutes: input.budgetMinutes,
       seed,
       weakestSkill: this.frontier.weakestSkill(),
       admittedIntroductions: admitted,
       introductionsFrozen: workload.freezeIntroductions,
+      repairs: this.activeRepairs(),
+      requireOffline: input.requireOffline ?? false,
       packVersion: this.packVersion(),
-    };
-    const plan = this.planner.plan(req);
+    });
 
-    // Refresh the private answer key for this plan.
     this.answerKey.clear();
     for (const [taskId, answer] of plan.answers) this.answerKey.set(taskId, answer);
 
@@ -147,7 +168,6 @@ export class DyrKernel {
     this.correlation = planned.eventId;
 
     for (const task of plan.tasks) {
-      // Ensure the target trace exists so review candidates resolve next time.
       this.traces.ensure(task.lexeme, task.skill);
       this.append("TaskCued", { task }, {
         causationId: planned.eventId,
@@ -158,142 +178,185 @@ export class DyrKernel {
     return plan;
   }
 
-  /** Register the expected answer + optional signal for a task cued elsewhere. */
-  registerTask(task: TaskContract, expectedAnswer: string, signalConfidence?: number): void {
+  /** Register an answer key / signal for a task cued outside planSession. */
+  registerTask(task: TaskContract, expectedAnswer: string, signal?: SpeechSignal): void {
     this.traces.ensure(task.lexeme, task.skill);
     this.answerKey.set(task.id, expectedAnswer);
-    if (signalConfidence !== undefined) this.signalKey.set(task.id, signalConfidence);
+    if (signal) this.signalKey.set(task.id, signal);
   }
 
   /**
-   * RETRIEVE -> EVIDENCE -> UPDATE -> CONSOLIDATE -> FACT.
-   * Returns the decision and, when the policy updates memory, the LearningFact.
+   * Durable, idempotent command entry point (ADR-0007). A repeat of the same
+   * idempotencyKey returns the original result and mutates nothing. A reused key
+   * with a different payload is a conflict (first write wins).
    */
+  submitCommand(
+    cmd: SubmitAttemptCommand,
+    task: TaskContract,
+    opts?: { signal?: SpeechSignal },
+  ): { outcome: CommandOutcome; result?: SubmitResult } {
+    const payloadHash = commandPayloadHash(cmd);
+    const prior = this.seenCommands.get(cmd.idempotencyKey);
+    if (prior) {
+      if (prior.payloadHash !== payloadHash) {
+        return { outcome: { status: "idempotency_conflict", idempotencyKey: cmd.idempotencyKey } };
+      }
+      return { outcome: { status: "duplicate", idempotencyKey: cmd.idempotencyKey }, result: prior.result };
+    }
+    const result = this.applyEvidence(task, cmd.attempt, cmd.attemptId, cmd.occurredAt, opts);
+    this.seenCommands.set(cmd.idempotencyKey, { payloadHash, result });
+    return { outcome: { status: "applied", idempotencyKey: cmd.idempotencyKey }, result };
+  }
+
+  /** Convenience wrapper: builds a durable command with a unique key. */
   submitAttempt(
     task: TaskContract,
     attempt: RawAttempt,
-    opts?: { signalConfidence?: number },
+    opts?: { signal?: SpeechSignal },
   ): SubmitResult {
-    const now = this.deps.clock.now();
+    const attemptId = `att_${task.id}_${this.autoCounter++}` as AttemptId;
+    return this.applyEvidence(task, attempt, attemptId, this.now(), opts);
+  }
+
+  /** RETRIEVE → EVIDENCE → (UPDATE → CONSOLIDATE → FACT) | terminal reject. */
+  private applyEvidence(
+    task: TaskContract,
+    attempt: RawAttempt,
+    attemptId: AttemptId,
+    now: number,
+    opts?: { signal?: SpeechSignal },
+  ): SubmitResult {
     const expectedAnswer = this.answerKey.get(task.id);
     if (expectedAnswer === undefined) {
       throw new Error(`no answer key registered for task ${task.id}; cannot grade`);
     }
-    const attemptId = `att_${task.id}_${this.log.length}` as AttemptId;
+    const rubric = buildRubric(task.family);
 
-    // AttemptAccepted — the raw attempt enters the log.
     const accepted = this.append("AttemptAccepted", { attempt }, {
       correlationId: this.correlation,
-      idempotencyKey: `attempt:${attemptId}`,
+      idempotencyKey: `accepted:${attemptId}`,
+      occurredAt: now,
     });
 
-    // EVIDENCE — validate into an envelope with confidence + reason codes.
-    const signalConfidence =
-      opts?.signalConfidence ?? this.signalKey.get(task.id);
+    const signal = opts?.signal ?? this.signalKey.get(task.id);
     const { envelope, decision } = evaluateEvidence(
-      { attemptId, attempt, task, expectedAnswer, signalConfidence },
+      { attemptId, attempt, task, rubric, expectedAnswer, signal },
       this.deps.config,
     );
 
-    this.append("EvidenceValidated", { envelope, decision }, {
-      causationId: accepted.eventId,
+    const validated = this.append("EvidenceValidated", { envelope, decision }, {
+      causationId: accepted.eventId, // causation: accepted → validated (ADR-0008)
       correlationId: this.correlation,
       idempotencyKey: `evidence:${attemptId}`,
+      occurredAt: now,
     });
 
     if (decision !== "update") {
-      // reject / ask_self_grade: NO memory write (Rule: passive != mastery).
+      // Terminal path — no TraceUpdated, no Fact (ADR-0008).
       return { envelope, decision };
     }
 
-    // UPDATE — exactly one SkillTrace changes (Rule 2). Guarded below.
-    const fact = this.applySingleUpdate(task, envelope, now, accepted.eventId);
-    return { envelope, decision, fact, updatedTrace: this.traces.get(task.targetTrace) };
+    return this.applySingleUpdate(task, envelope, rubric.rubricVersion, now, validated.eventId, attemptId);
   }
 
-  /** The one-update core. Enforces that no other trace mutates. */
+  /** One-update core (Rule 2), guarded. Emits repair on a lapse (ADR-0003). */
   private applySingleUpdate(
     task: TaskContract,
     envelope: AttemptEnvelope,
+    rubricVersion: string,
     now: number,
     causationId: EventId,
-  ): LearningFact {
+    attemptId: AttemptId,
+  ): SubmitResult {
     const before = this.traces.ensure(task.lexeme, task.skill);
     const othersBefore = this.otherTracesDigest(before.id);
 
-    const state: MemoryState = {
-      stability: before.stability,
-      difficulty: before.difficulty,
-      state: before.state,
-      lastReview: before.lastReview,
-    };
     const rating = envelope.ratingProposal;
-    const result = this.deps.fsrs.scheduleReview(state, rating, now);
+    const result = this.deps.fsrs.scheduleReview(memoryStateOf(before), rating, now);
 
     const traceUpdated = this.append("TraceUpdated", {
       traceId: before.id,
       ratingApplied: rating,
+      rubricVersion,
+      fsrsAdapterVersion: this.deps.fsrs.version,
       stabilityBefore: before.stability,
-      stabilityAfter: result.stability,
       difficultyBefore: before.difficulty,
-      difficultyAfter: result.difficulty,
-      dueAfter: result.due,
+      memoryAfter: result.state,
     }, {
-      causationId,
+      causationId, // causation: validated → traceUpdated (ADR-0008)
       correlationId: this.correlation,
-      idempotencyKey: `trace:${before.id}:${this.log.length}`,
+      idempotencyKey: `trace:${attemptId}`,
+      occurredAt: now,
     });
 
     const after: SkillTrace = {
       ...before,
-      stability: result.stability,
-      difficulty: result.difficulty,
-      state: result.state,
-      due: result.due,
-      lastReview: now,
+      ...result.state,
+      lastReview: result.state.lastReview ?? now,
       evidenceCount: before.evidenceCount + 1,
       eventCursor: traceUpdated.localSequence,
     };
     this.traces.put(after);
 
-    // Rule 2 guard: every other trace must be byte-for-byte unchanged.
-    const othersAfter = this.otherTracesDigest(after.id);
-    if (othersBefore !== othersAfter) {
+    if (othersBefore !== this.otherTracesDigest(after.id)) {
       throw new Error("invariant violated: an accepted attempt changed more than one SkillTrace");
     }
 
-    // CONSOLIDATE — record transfer/interference metadata (explanation only).
-    const transferNotes = this.deps.graph
-      .supportsOf(task.lexeme)
-      .map((e) => `support:${e.to}`)
+    // CONSOLIDATE — transfer/interference metadata (explanation only).
+    const transferNotes = this.deps.graph.supportsOf(task.lexeme).map((e) => `support:${e.to}`)
       .concat(this.deps.graph.interferenceOf(task.lexeme).map((e) => `interference:${e.to}`));
-    this.append("ConsolidationRecorded", { traceId: after.id, transferNotes }, {
-      causationId: traceUpdated.eventId,
+    const consolidated = this.append("ConsolidationRecorded", { traceId: after.id, transferNotes }, {
+      causationId: traceUpdated.eventId, // causation: traceUpdated → consolidation (ADR-0008)
       correlationId: this.correlation,
-      idempotencyKey: `consolidate:${after.id}:${this.log.length}`,
+      idempotencyKey: `consolidate:${attemptId}`,
+      occurredAt: now,
     });
 
-    // FACT — publish an immutable LearningFact outward (Rule 4, one-way).
+    // REPAIR — a lapse schedules an in-session repair for the SAME trace.
+    let repair: RepairDirective | undefined;
+    if (rating === "again") {
+      const priorAttempt = this.repairs.get(after.id)?.attempt ?? 0;
+      repair = makeRepairDirective(after.id, now, priorAttempt + 1);
+      this.repairs.set(after.id, repair);
+      this.append("RepairScheduled", {
+        traceId: after.id,
+        eligibleAt: repair.eligibleAt,
+        expiresAt: repair.expiresAt,
+        reason: repair.reason,
+      }, {
+        causationId: traceUpdated.eventId,
+        correlationId: this.correlation,
+        idempotencyKey: `repair:${attemptId}`,
+        occurredAt: now,
+      });
+    } else {
+      // A successful retrieval clears any pending repair for this trace.
+      this.repairs.delete(after.id);
+    }
+
+    // FACT — publish immutable LearningFact outward (Rule 4).
     const fact: LearningFact = {
       id: `fact_${after.id}_${traceUpdated.localSequence}` as FactId,
       trace: after.id,
       lexeme: after.lexeme,
       skill: after.skill,
       ratingApplied: rating,
-      stabilityAfter: result.stability,
-      difficultyAfter: result.difficulty,
+      stabilityAfter: after.stability,
+      difficultyAfter: after.difficulty,
       retrievabilityAtReview: result.retrievabilityAtReview,
-      dueAfter: result.due,
+      dueAfter: after.due ?? now,
       occurredAt: now,
       sourceSequence: traceUpdated.localSequence,
     };
     this.facts.push(fact);
     this.append("LearningFactPublished", { fact }, {
-      causationId: traceUpdated.eventId,
+      causationId: consolidated.eventId, // causation: consolidation → fact (ADR-0008)
       correlationId: this.correlation,
-      idempotencyKey: `fact:${fact.id}`,
+      idempotencyKey: `fact:${attemptId}`,
+      occurredAt: now,
     });
-    return fact;
+
+    return { envelope, decision: "update", fact, updatedTrace: after, repair };
   }
 
   private otherTracesDigest(exceptId: string): string {
@@ -311,12 +374,12 @@ export class DyrKernel {
   private append<P>(
     eventType: Parameters<EventLog["append"]>[0]["eventType"],
     payload: P,
-    extra: { causationId?: EventId; correlationId?: EventId; idempotencyKey: string },
+    extra: { causationId?: EventId; correlationId?: EventId; idempotencyKey: string; occurredAt?: number },
   ) {
     return this.log.append<P>({
       learnerId: this.deps.learnerId,
       deviceId: this.deps.deviceId,
-      occurredAt: this.deps.clock.now(),
+      occurredAt: extra.occurredAt ?? this.now(),
       eventType,
       payload,
       plannerVersion: PLANNER_VERSION,

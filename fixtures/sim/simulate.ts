@@ -34,7 +34,7 @@ export function simulate(days = 365, budgetMinutes = 7): SimResult {
 
     const plan = h.kernel.planSession({
       budgetMinutes,
-      admittedIntroductions: h.pack.lexemeIds,
+      candidateIntroductions: h.pack.lexemeIds,
     });
     sessions++;
     maxPredicted = Math.max(maxPredicted, plan.predictedMinutes);

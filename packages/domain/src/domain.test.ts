@@ -5,8 +5,9 @@ import {
   canonicalJson,
   deriveSeed,
   hashValue,
+  isDue,
+  latenessDays,
   newTrace,
-  retrievability,
   traceId,
   LexemeId,
 } from "./index.ts";
@@ -32,20 +33,22 @@ test("traceId binds lexeme and skill (four-traces identity)", () => {
   assert.notEqual(traceId(lex, "listening"), traceId(lex, "reading"));
 });
 
-test("retrievability decays monotonically after review", () => {
-  const t = { ...newTrace(traceId(LexemeId("x"), "reading"), LexemeId("x"), "reading"),
-    stability: 10, state: "review" as const, lastReview: 0 };
-  const day = 86_400_000;
-  const r1 = retrievability(t, day * 1);
-  const r5 = retrievability(t, day * 5);
-  const r20 = retrievability(t, day * 20);
-  assert.ok(r1 > r5 && r5 > r20, `expected decay, got ${r1} ${r5} ${r20}`);
-  assert.ok(r1 <= 1 && r20 >= 0);
+test("the domain no longer implements a forgetting curve (ADR-0002)", async () => {
+  // Retrievability is the FSRS adapter's sole responsibility now. The domain
+  // exposes memory STATE and due/lateness helpers only — importing a domain
+  // `retrievability` must fail.
+  const mod = await import("./index.ts");
+  assert.equal((mod as Record<string, unknown>).retrievability, undefined);
 });
 
-test("a brand-new trace has zero retrievability (never retrieved)", () => {
-  const t = newTrace(traceId(LexemeId("x"), "reading"), LexemeId("x"), "reading");
-  assert.equal(retrievability(t, 999), 0);
+test("due and lateness derive from stored state, not a curve", () => {
+  const day = 86_400_000;
+  const t = { ...newTrace(traceId(LexemeId("x"), "reading"), LexemeId("x"), "reading"),
+    state: "review" as const, due: 10 * day, lastReview: 0, stability: 10 };
+  assert.equal(isDue(t, 9 * day), false);
+  assert.equal(isDue(t, 12 * day), true);
+  assert.equal(latenessDays(t, 12 * day), 2);
+  assert.equal(latenessDays(t, 5 * day), 0);
 });
 
 test("ManualClock only moves when told", () => {

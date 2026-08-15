@@ -9,7 +9,7 @@ function run(h: Harness): void {
   for (let day = 0; day < 6; day++) {
     const plan = h.kernel.planSession({
       budgetMinutes: 7,
-      admittedIntroductions: h.pack.lexemeIds,
+      candidateIntroductions: h.pack.lexemeIds,
     });
     for (const [i, task] of plan.tasks.entries()) {
       const ans = plan.answers.get(task.id)!;

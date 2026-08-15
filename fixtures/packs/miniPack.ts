@@ -11,11 +11,11 @@
 import {
   type Lexeme,
   type LexemeId,
-  type Skill,
   LanguageGraph,
   LexemeId as mkLexemeId,
   PackVersion,
 } from "@dyr/domain";
+import type { AssetProvider } from "@dyr/kernel";
 
 export const PACK_VERSION = PackVersion("dyr-mini@1.0.0");
 
@@ -74,19 +74,37 @@ export function buildMiniPack(): MiniPack {
   graph.addEdge({ type: "CONFUSABLE", from: "be.v.01", to: "matter.n.01", weight: 0.8 });
   graph.addEdge({ type: "CONFUSABLE", from: "matter.n.01", to: "be.v.01", weight: 0.8 });
 
+  // Pronunciation + grammar nodes (ADR-0009): 银行 = yín(2) háng(2), zh-CN.
+  graph.addPronunciation({
+    id: "bank.n.01.pron", lexeme: mkLexemeId("bank.n.01"), syllable: "yínháng",
+    tone: 2, region: "zh-CN", audioAssetId: "audio:bank.n.01", speaker: "cv-zh-001",
+    packVersion: PACK_VERSION,
+  });
+  graph.addGrammarAtom({
+    id: "shi-copula", form: "是", function: "copula (A 是 B)", prerequisites: [],
+    contexts: ["identification"], examples: [], packVersion: PACK_VERSION,
+  });
+
   return { graph, lexemeIds, provenance };
 }
 
-/** Build the kernel admission callbacks from the pack's provenance. */
-export function miniAdmission(pack: MiniPack) {
+/**
+ * AssetProvider for the mini pack. `matter.n.01` deliberately has NO human
+ * audio, so any audio-primary task for it must be rejected at plan time with
+ * `missing_canonical_audio` (Correction 7).
+ */
+export function miniAssets(pack: MiniPack): AssetProvider {
+  const audio = (lexeme: LexemeId) => pack.provenance.get(lexeme)?.hasHumanAudio ?? false;
   return {
-    licensed: (lexeme: LexemeId) => {
+    licensed: (lexeme) => {
       const p = pack.provenance.get(lexeme);
       return p !== undefined && ALLOWED_LICENCES.has(p.licence);
     },
-    humanAudioAvailable: (lexeme: LexemeId, _skill: Skill) =>
-      pack.provenance.get(lexeme)?.hasHumanAudio ?? false,
-    // The mini pack keeps every candidate inside the 95–98% comprehension band.
-    knownTokenRatio: (_lexeme: LexemeId) => 0.96,
+    hasCanonicalAudio: audio,
+    hasTranscript: audio,
+    hasStrokeData: () => true,
+    hasRubric: () => true,
+    offlineAvailable: () => true,
+    knownTokenRatio: () => 0.96,
   };
 }

@@ -69,12 +69,48 @@ export interface Character {
 }
 
 /**
+ * PRONUNCIATION node (ADR-0009): syllable, tone, region, sandhi metadata and
+ * speaker/audio association. Evidence/explanation only — never a new scheduler
+ * dimension (spec §14).
+ */
+export interface Pronunciation {
+  id: string;
+  lexeme: LexemeId;
+  syllable: string;
+  /** Lexical tone 1–4, or 5 for neutral. */
+  tone: 1 | 2 | 3 | 4 | 5;
+  region: string; // e.g. "zh-CN"
+  /** Contextual tone-sandhi notes, e.g. "third-tone sandhi before third tone". */
+  sandhi?: string;
+  /** Canonical human-recorded audio asset id, if any (spec p.21). */
+  audioAssetId?: string;
+  speaker?: string;
+  packVersion: PackVersion;
+}
+
+/**
+ * GRAMMAR ATOM node (ADR-0009): form, function, prerequisites, contexts and
+ * examples. Explanation/eligibility metadata, not a scheduler dimension.
+ */
+export interface GrammarAtom {
+  id: string;
+  form: string;
+  function: string;
+  prerequisites: string[];
+  contexts: string[];
+  examples: SentenceId[];
+  packVersion: PackVersion;
+}
+
+/**
  * The read-only graph the kernel queries during planning and frontier
  * admission. It never mutates; a new pack version means a new Graph.
  */
 export class LanguageGraph {
   readonly lexemes = new Map<string, Lexeme>();
   readonly sentences = new Map<string, Sentence>();
+  readonly pronunciations = new Map<string, Pronunciation>();
+  readonly grammarAtoms = new Map<string, GrammarAtom>();
   private readonly edges: Edge[] = [];
   private readonly outByType = new Map<string, Edge[]>();
 
@@ -85,6 +121,18 @@ export class LanguageGraph {
   addSentence(s: Sentence): this {
     this.sentences.set(s.id, s);
     return this;
+  }
+  addPronunciation(p: Pronunciation): this {
+    this.pronunciations.set(p.id, p);
+    return this;
+  }
+  addGrammarAtom(g: GrammarAtom): this {
+    this.grammarAtoms.set(g.id, g);
+    return this;
+  }
+  pronunciationOf(lexeme: string): Pronunciation | undefined {
+    for (const p of this.pronunciations.values()) if (p.lexeme === lexeme) return p;
+    return undefined;
   }
   addEdge(e: Edge): this {
     this.edges.push(e);

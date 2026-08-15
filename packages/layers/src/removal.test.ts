@@ -7,7 +7,7 @@ import { makeHarness, correctAttempt, wrongAttempt } from "../../../fixtures/sim
 function run() {
   const h = makeHarness();
   for (let d = 0; d < 4; d++) {
-    const plan = h.kernel.planSession({ budgetMinutes: 7, admittedIntroductions: h.pack.lexemeIds });
+    const plan = h.kernel.planSession({ budgetMinutes: 7, candidateIntroductions: h.pack.lexemeIds });
     for (const [i, task] of plan.tasks.entries()) {
       const ans = plan.answers.get(task.id)!;
       const prod = task.skill === "speaking" || task.skill === "writing";

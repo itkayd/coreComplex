@@ -15,20 +15,32 @@ import { makeHarness } from "../../../fixtures/sim/harness.ts";
 
 const lex = LexemeId("bank.n.01"); // 银行, the spec p.4 example word
 
+const FAMILY: Record<Skill, TaskContract["family"]> = {
+  listening: "audio_to_meaning",
+  reading: "hanzi_to_meaning",
+  speaking: "meaning_to_speech",
+  writing: "meaning_to_typed_word",
+};
+
 /** Build a task for one skill whose cue never equals its answer (no leakage). */
 function taskFor(skill: Skill): { task: TaskContract; answer: string } {
   const answer = `answer-${skill}`;
+  const family = FAMILY[skill];
   const task: TaskContract = {
     id: `t_${skill}` as TaskId,
     targetTrace: traceId(lex, skill),
     lexeme: lex,
     skill,
-    family: "hanzi_to_meaning" as TaskContract["family"],
+    family,
     cue: `cue-${skill}`,
+    rubricId: `${family}.rubric`,
+    rubricVersion: "dyr-rubric@1.0.0",
+    assetRefs: [],
     requiresHumanAudio: skill === "listening",
     estSeconds: 8,
     isNovel: false,
-    plannerVersion: "dyr-planner@1.0.0" as PlannerVersion,
+    isRepair: false,
+    plannerVersion: "dyr-planner@2.0.0" as PlannerVersion,
     packVersion: PackVersion("dyr-mini@1.0.0"),
   };
   return { task, answer };
@@ -76,9 +88,14 @@ test("Rule 1: the four skill channels are independent for one concept", () => {
 
   const readTrace = kernel.traces.get(traceId(lex, "reading"))!;
   const speakTrace = kernel.traces.get(traceId(lex, "speaking"))!;
-  assert.equal(readTrace.state, "review", "reading succeeded");
-  assert.equal(speakTrace.state, "relearning", "speaking failed");
-  assert.ok(readTrace.stability > speakTrace.stability, "same word, different reality per channel");
+  // Same word, different reality per channel: reading succeeded (higher
+  // stability, no repair); speaking failed (a repair directive was scheduled
+  // for the speaking trace only). We assert the divergence, not step-specific
+  // FSRS state labels.
+  const repairs = kernel.activeRepairs();
+  assert.ok(repairs.some((d) => d.trace === traceId(lex, "speaking")), "speaking repair scheduled");
+  assert.ok(!repairs.some((d) => d.trace === traceId(lex, "reading")), "reading needs no repair");
+  assert.ok(readTrace.stability > speakTrace.stability, "reading stronger than speaking");
 
   // Listening and writing were never attempted — they must remain untouched.
   for (const skill of ["listening", "writing"] as Skill[]) {

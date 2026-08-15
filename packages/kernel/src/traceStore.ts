@@ -65,6 +65,10 @@ export class TraceStore {
       t.state,
       t.due ?? -1,
       t.lastReview ?? -1,
+      t.reps,
+      t.lapses,
+      t.learningSteps,
+      t.scheduledDays,
       t.evidenceCount,
       t.eventCursor,
     ]);
