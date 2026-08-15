@@ -220,6 +220,8 @@ export function buildCore60Pack(opts: BuildOptions = {}): BuildReport {
   const audioRows = canonicalAudioDigestRows(
     normalised.map((e) => canonicalById.get(e.id)?.asset).filter((a) => a !== undefined),
   );
+  // Licences must be known before signing, so the manifest is built first.
+  const preManifest = normalised.map((e) => ({ id: e.id, licenseSpdx: provenanceFor(e.id).licenceSpdx }));
   const contentHash = sha256(contentDigestInput(
     normalised.map((e) => ({
       id: e.id, simplified: e.simplified, traditional: e.traditional,
@@ -227,6 +229,7 @@ export function buildCore60Pack(opts: BuildOptions = {}): BuildReport {
     })),
     new Map(normalised.map((e) => [e.id, e.tones as number[]])),
     audioRows,
+    preManifest,
   ));
   const packVersion = mkPackVersion(`${PACK_ID}@1.0.0+${contentHash.slice(0, 12)}`);
 

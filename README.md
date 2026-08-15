@@ -154,13 +154,21 @@ metadata, and grammar atoms. Built by the seven-stage pipeline (spec p.7) into a
 **immutable, sha256-signed, versioned artefact** — the pack version embeds the
 content hash, so a correction necessarily mints a new version.
 
-`HSK 1 expansion`: a further **400 lexemes** covering the rest of HSK 3.0 band 1.
+`HSK 1–3 expansion`: a further **1,946 lexemes** covering HSK 3.0 bands 1 to 3.
 Band membership comes from the official Ministry of Education word list
 (elkmovie/hsk30, MIT, © Pleco Inc. — an OCR the rights holder published);
 definitions come from CC-CEDICT and are therefore **CC BY-SA 4.0**, not CC0.
 Share-alike is a real obligation and aggregation does not launder it, so these
 entries carry their own licence and attribution. Only the word, its pinyin and a
 cleaned gloss were taken — no frequency, part-of-speech or radical data.
+
+The artefact interns shared provenance: profiling showed 73% of a 2,000-word pack
+was identical licence prose repeated per asset. The fields now live once in a
+`sources` table that each manifest row references, `attributions` is derived on
+import rather than transmitted, and unprovisioned audio placeholders are
+reconstructed rather than shipped — 5.5 MB down to 1.7 MB, with every asset's
+provenance byte-identical after the round-trip. Licences are also part of the
+content hash now, so a pack cannot be quietly relabelled and still verify.
 
 Because the specification bans *unlicensed* HSK data and Pleco data, an asset
 naming either must record an explicit `rightsGrant`: who granted it, under what

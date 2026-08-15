@@ -17,7 +17,7 @@
  * The digest INPUT is defined here and shared by the Node build pipeline and the
  * browser, so the two can never drift apart and disagree about the same pack.
  */
-import type { ExportedPack } from "./export.ts";
+import { expandManifest, type ExportedPack } from "./export.ts";
 
 export interface ValidationIssue {
   /** JSON-ish path to the offending value, e.g. `lexemes[3].pinyin`. */
@@ -88,8 +88,33 @@ export function validatePackStructure(input: unknown): ValidationResult {
     });
   }
 
-  for (const key of ["characters", "pronunciations", "grammarAtoms", "edges", "audio", "manifest", "attributions"]) {
+  for (const key of ["characters", "pronunciations", "grammarAtoms", "edges", "audio", "sources", "manifest"]) {
     requireArray((input as Record<string, unknown>)[key], key, issues);
+  }
+
+  // Provenance is interned: every manifest row must resolve to a real source, or
+  // the asset effectively has no licence and must not be taught from.
+  const sources = Array.isArray(input.sources) ? input.sources : undefined;
+  const manifest = Array.isArray(input.manifest) ? input.manifest : undefined;
+  if (sources && manifest) {
+    if (sources.length === 0) issues.push({ path: "sources", message: "pack declares no provenance" });
+    manifest.forEach((row, index) => {
+      const at = `manifest[${index}]`;
+      if (!isRecord(row)) { issues.push({ path: at, message: "expected an object" }); return; }
+      requireString(row.id, `${at}.id`, issues);
+      requireString(row.sha256, `${at}.sha256`, issues);
+      if (typeof row.source !== "number" || !Number.isInteger(row.source)) {
+        issues.push({ path: `${at}.source`, message: "expected an integer index into sources" });
+      } else if (row.source < 0 || row.source >= sources.length) {
+        issues.push({ path: `${at}.source`, message: `references source ${row.source}, which does not exist` });
+      }
+    });
+    sources.forEach((source, index) => {
+      const at = `sources[${index}]`;
+      if (!isRecord(source)) { issues.push({ path: at, message: "expected an object" }); return; }
+      requireString(source.licenseSpdx, `${at}.licenseSpdx`, issues);
+      requireString(source.sourceName, `${at}.sourceName`, issues);
+    });
   }
 
   // Every lexeme must belong to the pack version the manifest declares, or the
@@ -130,6 +155,7 @@ export function contentDigestInput(
   lexemes: { id: string; simplified: string; traditional?: string; pinyin: string; senses: string[]; pos: string; frequency: number }[],
   tones: Map<string, number[]>,
   canonicalAudio: { lexeme: string; sha256: string }[] = [],
+  licences: { id: string; licenseSpdx: string }[] = [],
 ): string {
   return JSON.stringify([
     lexemes.map((l) => [
@@ -138,6 +164,14 @@ export function contentDigestInput(
     ]),
     [...canonicalAudio]
       .map((a) => [a.lexeme, a.sha256.toLowerCase()] as const)
+      .sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)),
+    // Licences are part of pack identity too. Without this the hash verified the
+    // WORDS while saying nothing about the terms they ship under, so a pack could
+    // be re-licensed — CC BY-SA quietly relabelled CC0 — and still verify. For a
+    // project whose whole claim is "open by construction", that is exactly the
+    // thing the signature ought to cover.
+    [...licences]
+      .map((l) => [l.id, l.licenseSpdx] as const)
       .sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)),
   ]);
 }
@@ -196,6 +230,7 @@ export async function verifyPackIntegrity(pack: ExportedPack, sha256: Sha256 = w
     pack.lexemes as never,
     tones,
     canonicalAudioDigestRows(pack.audio ?? []),
+    expandManifest(pack).map((a) => ({ id: a.id, licenseSpdx: a.licenseSpdx })),
   ));
   return { ok: actual === pack.contentHash, expected: pack.contentHash, actual };
 }
