@@ -6,36 +6,17 @@
  * is validated against the assets THAT task needs, with explainable reason codes.
  */
 import {
+  type AssetProvider,
+  type AssetReasonCode,
   type LexemeId,
   type Skill,
   type TaskRubric,
 } from "@dyr/domain";
 
-/** Provider contract the kernel queries; implementations live in content/senses. */
-export interface AssetProvider {
-  /** Source + pack pass the redistribution allowlist (Rule 5). */
-  licensed(lexeme: LexemeId): boolean;
-  /** A canonical human recording exists for this lexeme (Rule 6, spec p.21). */
-  hasCanonicalAudio(lexeme: LexemeId): boolean;
-  /** A verified transcript exists for the lexeme's audio. */
-  hasTranscript(lexeme: LexemeId): boolean;
-  /** Stroke/handwriting data exists (writing handwriting tasks). */
-  hasStrokeData(lexeme: LexemeId): boolean;
-  /** The rubric this task needs is available. */
-  hasRubric(rubricId: string, rubricVersion: string): boolean;
-  /** Required assets are available offline when the session demands it. */
-  offlineAvailable(lexeme: LexemeId): boolean;
-  /** Fraction of surrounding tokens already known (frontier context gate, p.6). */
-  knownTokenRatio(lexeme: LexemeId): number;
-}
-
-export type AssetReasonCode =
-  | "missing_canonical_audio"
-  | "asset_not_licensed"
-  | "asset_not_available_offline"
-  | "rubric_not_available"
-  | "missing_transcript"
-  | "missing_stroke_data";
+// The provider contract itself lives in @dyr/domain so that @dyr/content can
+// implement it without importing the kernel (spec §20). Re-exported here for
+// callers that already depend on the kernel.
+export type { AssetProvider, AssetReasonCode };
 
 export interface AssetGateResult {
   ok: boolean;

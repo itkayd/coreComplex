@@ -13,6 +13,7 @@ export * from "./clock.ts";
 export * from "./graph.ts";
 export * from "./traces.ts";
 export * from "./contracts.ts";
+export * from "./assets.ts";
 export * from "./rubric.ts";
 export * from "./taskfamily.ts";
 export * from "./repair.ts";

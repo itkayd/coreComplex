@@ -102,3 +102,10 @@ export function licenceGate(asset: SourceAsset): LicenceDecision {
   if (!ALLOW.has(spdx)) return { allowed: false, reason: `licence not on allowlist: ${spdx}` };
   return { allowed: true, reason: `allowed under ${spdx}` };
 }
+
+// Pack pipeline, audio provisioning and the AssetProvider implementation.
+export * from "./audio.ts";
+export * from "./pipeline.ts";
+export * from "./provider.ts";
+export { CORE60, CORE60_EDGES } from "./packs/core60.data.ts";
+export type { Core60Entry } from "./packs/core60.data.ts";
