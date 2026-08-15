@@ -1,0 +1,607 @@
+{
+  "packId": "dyr-core60",
+  "packVersion": "dyr-core60@1.0.0+0b3b396cc907",
+  "contentHash": "0b3b396cc90731580949369717a0ea663b033d4d07c421dc209862e8750d5c20",
+  "entries": [
+    {
+      "id": "at.prep.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "c5ac83e72190d92e486c147c3f9ab2125590c7b3681b084f169741cdcdfd323c",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "bank.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "db95cd72caa481a38fca29275e9d7ce72a6d0ec4aa8b3822d0a7117e5f2340e1",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "be.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "eed22708faccaedda64bdf89f5476fdba1e66cb2cbb0179df4a705d3b0b36956",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "buy.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "04e4abf86aa68bf04ba1b50970eebad760ec02f5358beaca5d02aefb3d96187d",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "china.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "5a3e988fe9a5a3c21d7f38f18c4e60f6fc6d311c2eb4aa31d7a50f75dcd924d5",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "chinese.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "4c1daa5ab5f6108f683828784985539a5814112d809848525c56b7e839a3b7ca",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "come.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "010a399f30a72196d243ad22007ac949ad95bf62f11ced0d37a995b59c96fe03",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "day.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "4d3bb81dcb02968f5552fdaecba87459d92103fdf6935332b0082e5da5946934",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "dish.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "ef903ed6e16b5082607b17f44e6a3b1c21fcc1034e93bd9b08caa4f8d4db3178",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "drink.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "91295dc6b053cbe93c2b84791e3513a6a4a08ee9f5baf459e49477e286925a6b",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "eat.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "3dd2c4c84ccdf9671fb1598f8195b817d412bd2b4707784da71cf26bbda7ca93",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "english.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "21b4353b56d50220c57111f120a56dd97ca59d109e48c4056efeedbc5a7cc920",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "friend.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "553244c2e0810fb565ef0a49587f72710aacb40e978dde9479dac2c14445eb11",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "go.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "b3edf46dec3295561cbb65cc5d3c0e51d3ecd8a6bc5b0048d0e04747ece4abf0",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "good.a.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "0a9fe2aea66347b334982adb16be6575d5b006996451801c0625997d2831f6d1",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "have.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "d6967ad64888b27ce7cc178abdf1fc1f632abe7b4dcdb51e048982930034d647",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "he.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "74e1e50b26f9d34e3711ed1c8605d8a51616235c81b18d39f08f3646b29dcf2c",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "hello.intj.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "c684f0f10b41bca60ae94511b442353b5ef084ba3864cbfecbafd619356a0a50",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "home.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "339d485c0b36f228057566118643e48956307ae242cdb05420c476de992f9297",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "howmany.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "236f8400a2ed7964036468be82ca813f6c32f8a8130e129e89539ff5adb797ae",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "hundred.num.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "efba3da1a21f756d282999c02277378008d60646c6914179118f0b248987ba08",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "i.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "ec8ad02d3c8a30ed0cf339f129b81e7a0875a4ce41a9e592cb5cd938ddfd9a08",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "listen.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "de68a8a389fda288dc9701da92a291ce158232b3ff801903c9863eb657eea949",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "look.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "dbaecbd19cb404a8fbfac88d49dbfaee93e8dc9a73e7f5f37ace110aabd78fe0",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "meal.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "e19a4e5ef529d153d011f6160aa5484802f73da09c7fbaf67b7c06edc36c6adb",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "money.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "6d3256389e0afe9c31e9b941a841aa6acbc71833bb80e7674f6ba9f2e72c149d",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "month.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "404e5bcc5dc1dbd97bc586684fe671cc9585d3d6bb6e12cc50c1aa33277055ed",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "not.adv.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "0a87d107c1a59a5d5728188cd8ee06ba35cd88d252b54d1143615420b846e92a",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "nothave.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "152bebd87f17e72e1d87f8f144526b142c05de8f829d237cf5cb86db346c2591",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "now.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "f72a69c29cf229b68a9c5f2eb1886f0cf287293662f34f2c6da9653839b29ed8",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "oclock.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "fb6a436cc4f930e8bbe379bfa4bc40fcfaf222da475243cafb4629a590877ba7",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "one.num.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "9e61b475c3f175978b55191dd3b87a6909bb7f80a903e1fe33aa1d1aa5d80465",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "person.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "0d866c153ab4f63a43deec29930cceedfe4d6e721d7ef717d406aab0d7fff4e3",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "read.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "22c6477cd5e4a29463ebc8361a08ff41b8bfaa107b5d7ab64bdecdd23431fe69",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "school.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "d0c099dc3ed633fba9af5a28e4fc08d2220eec772883dfadb4883ad0d6d76d38",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "sell.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "b60ff032dffde3c02dd8299f1090ed8d982399ad0451f20458201360f754bb89",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "she.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "64af3856eb98509ac22eb849e06add9b3fa693313533ae706ee83c204a85bbd0",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "speak.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "8398fa2719a5f0f69d776af24ebbd586c8db20260042822c00c84ef10209347b",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "student.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "eeddd6a2182029cc4585824b8500bbaa5fd96e1679936b4e2c0117a949bf70b3",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "tea.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "7cdd253b3bb16807fe9bfc6cf61859aa21dc2966efee8042d6e7e5ebae27cbce",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "teacher.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "b680705062a57987f5ade611167931407586fbb4a92547685e536285090ce37b",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "ten.num.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "3a994e291f5269768dbf3d287f3808e1d721dbff2e84fed10e97cd519ae965aa",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "thanks.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "d2d8a453674a02573c78c0109da477e7d77d079e8190e648e43b18141789109b",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "that.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "148ace5db65836960cb7c9c1b2767edb888a2236860ffc4fc2a02d14d9579fbe",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "this.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "3b3fcdb8c3cfe1254253b658d1c68f1b81eed29b317618b10ec472cb0895af10",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "three.num.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "341aa8e73e95917d04995be97609ed1207a21c3cd00a640179df2411acf2c90b",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "time.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "3cde51b58b985a62e12fea47441998c4237d73816a729e5b9e188d7df102f982",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "today.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "c45287218d87bb15a937201531ae918aba7dbcd7a0f5d3252aa121ea5b3afc3a",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "tomorrow.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "bd28072db9ad632d9a3b698b70754a058a78da647da787cca587ae80649a1fc2",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "two.num.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "51ce74f4fdb2402eb713719e36fc7901e22a0770d8d20a1f532e88a9536daad5",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "water.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "ccc9e66a0e3c9427279e8bbe77428c48c5e1d2c860cdb5aa5421574f3d213d41",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "we.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "1fc7e3bf1517a8045e120122781af8c50019752339493ea2f67363d8981bdc94",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "week.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "bcedfec5296c611e66b7733cd52517e5423ef55fd4998746826491115f479317",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "what.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "494c183974dc7882cec12b8c38d7b89449739de2222f4b70d28deb9c5e848fa7",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "which.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "e70d59525d56a6055e4a015516a03a7212d9d94f68eb8745fb59b0535ca263ac",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "who.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "52b36729c227a95f0d23baeaa80e93769856e55ac0dfaeefcda768edcb941bdc",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "write.v.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "cbb443530a76c8285abfa9021d17402948e6be255c132443f45ac9c5aa801015",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "year.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "2e47fdf11101a2d94e7e9f98012b19457bdccdf89e6c9bcad52de7bf4f8f1ef4",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "yesterday.n.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "a8acbabfb0bbd406c9a3ea1706e939d6f8ef3f96469b294592488282214871fe",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    },
+    {
+      "id": "you.pron.01",
+      "sourceName": "Dyr Core 60 (authored)",
+      "licenseSpdx": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Dyr Mandarin Lab",
+      "attributionText": "Dyr Mandarin Lab — Dyr Core 60 (CC0-1.0)",
+      "sha256": "01a4b6be3ea814b9eb6c1c3f762727139b9fa9cd19858f9cef73984bf8c9949f",
+      "immutableVersion": "dyr-core60@1.0.0+0b3b396cc907"
+    }
+  ]
+}

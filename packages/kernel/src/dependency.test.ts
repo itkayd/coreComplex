@@ -55,6 +55,36 @@ test("the kernel imports no UI / game / layer / provider implementation (headles
   }
 });
 
+test("no learning package imports a concrete language/speech TOOL", () => {
+  // The full list from the infrastructure brief. Every one of these is a
+  // sensory provider, content tool or presentation concern — none may appear in
+  // the learning brain, or an upgrade to a segmenter/model could silently change
+  // lexeme identity, evidence, or scheduling.
+  const tools = [
+    "jieba", "nodejieba", "opencc", "pinyin", "pypinyin", "hanzi-writer",
+    "sherpa-onnx", "librosa", "montreal-forced-aligner", "ffmpeg", "fluent-ffmpeg",
+    "cosyvoice", "fastapi", "playwright", "@playwright/test", "axe-core",
+    "minisearch", "workbox-window", "yjs", "zod", "umami", "@opentelemetry/api",
+  ];
+  for (const pkg of ["domain", "kernel", "content", "layers"]) {
+    for (const file of tsFiles(join(root, "packages", pkg, "src"))) {
+      for (const spec of imports(file)) {
+        assert.ok(!tools.includes(spec.toLowerCase()),
+          `${pkg} must not import "${spec}" (${file})`);
+      }
+    }
+  }
+});
+
+test("the content import pipeline is build-time only — the kernel never imports it", () => {
+  for (const file of tsFiles(join(root, "packages", "kernel", "src"))) {
+    for (const spec of imports(file)) {
+      assert.ok(!spec.includes("/import/"), `kernel must not import the content pipeline (${file})`);
+      assert.ok(spec !== "@dyr/content", `kernel must not import @dyr/content (${file})`);
+    }
+  }
+});
+
 test("no learning package imports a concrete speech engine (CosyVoice isolation)", () => {
   // CosyVoice, its FastAPI runtime and the service that wraps it must stay
   // behind the SyntheticSpeechProvider contract. A speech engine appearing in

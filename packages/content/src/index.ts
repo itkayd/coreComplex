@@ -112,3 +112,4 @@ export { CORE60, CORE60_EDGES } from "./packs/core60.data.ts";
 export type { Core60Entry } from "./packs/core60.data.ts";
 export * from "./export.ts";
 export * from "./audio-analysis.ts";
+export * from "./import/index.ts";

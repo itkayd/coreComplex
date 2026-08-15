@@ -19,7 +19,8 @@
     "build:pack": "node packages/content/bin/build-pack.ts",
     "build:web": "node packages/content/bin/build-pack.ts apps/web/public/packs && npm run build --workspace=@dyr/web",
     "audio:qa": "node packages/content/bin/audio-qa.ts",
-    "speech": "node apps/service/src/index.ts"
+    "speech": "node apps/service/src/index.ts",
+    "attributions": "node packages/content/bin/attributions.ts"
   },
   "devDependencies": {
     "@types/node": "22.10.5",

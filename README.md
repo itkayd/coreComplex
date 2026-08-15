@@ -87,6 +87,7 @@ npm run matrix    # seeded 9-profile 365-day simulation matrix report
 # Stage 2 — content pack and the plain body
 npm run build:pack               # build the immutable, signed Core 60 artefact
 npm run audio:qa -- <clipDir>    # screen candidate recordings against the audio gate
+npm run attributions             # regenerate ATTRIBUTIONS.{json,md} from the pack
 npm run speech                   # local synthetic-speech service (see docs/SETUP-SPEECH.md)
 npm run build:web                # build the pack + the offline PWA
 npm run dev --workspace=@dyr/web # run the plain body locally
@@ -131,6 +132,31 @@ fully useful with every optional layer absent.
 pack are stored — no game or profile store. On startup the kernel is rebuilt by
 replaying that log, so a reload resumes exactly where you were, with pending
 repairs intact and no penalty.
+
+## Open content pipeline
+
+Importers for the open Mandarin sources, all build-time and none in the kernel:
+
+- **CC-CEDICT parser** — canonical `cedict_ts.u8` format; preserves the original
+  numbered pinyin verbatim and derives the tone-marked form; keeps distinct
+  senses and heteronyms separate; rejects malformed lines *with reasons*.
+- **Pinyin normaliser** — numbered ⇄ tone-marked, with initial/final split for
+  later pronunciation evidence. Pure TypeScript; see the dependency register for
+  why pypinyin is not a dependency.
+- **Tokeniser** — longest-match over the LanguageGraph, so 银行 stays one lexeme
+  rather than 银 + 行. Character offsets preserved for highlighting. A fallback
+  segmenter (Jieba et al.) can refine **only unknown spans**, so a library
+  upgrade can never re-cut vocabulary Dyr already owns.
+- **Static difficulty** — highest HSK level, out-of-level tokens, target density.
+  `knownTokenRatio` is deliberately absent: it depends on live SkillTrace state
+  and belongs to the kernel, never to an immutable content object.
+- **Source audit** — admission is decided per *component*, not per repository.
+
+> **A source was rejected.** The suggested HSK 3.0 repository declares its word
+> lists as Pleco-derived, which the spec denies (p.7, p.22). An MIT wrapper does
+> not launder that origin, and the repo has no per-file provenance to separate it
+> from its CC BY-SA parts — so **HSK levels are not bundled**. Full reasoning and
+> routes to a usable source: `docs/SOURCE_AUDIT.md`.
 
 ## Synthetic speech (CosyVoice)
 
