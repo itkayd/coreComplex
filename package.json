@@ -20,7 +20,8 @@
     "build:web": "node packages/content/bin/build-pack.ts apps/web/public/packs && npm run build --workspace=@dyr/web",
     "audio:qa": "node packages/content/bin/audio-qa.ts",
     "speech": "node apps/service/src/index.ts",
-    "attributions": "node packages/content/bin/attributions.ts"
+    "attributions": "node packages/content/bin/attributions.ts",
+    "e2e": "node apps/web/e2e/stage2.mjs"
   },
   "devDependencies": {
     "@types/node": "22.10.5",

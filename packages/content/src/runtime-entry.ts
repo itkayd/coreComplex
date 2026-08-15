@@ -6,6 +6,7 @@
  * re-sign one.
  */
 export * from "./runtime.ts";
+export * from "./validate.ts";
 export * from "./audio.ts";
 export * from "./audio-analysis.ts";
 export * from "./provider.ts";

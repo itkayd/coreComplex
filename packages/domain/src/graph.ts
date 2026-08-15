@@ -77,8 +77,17 @@ export interface Pronunciation {
   id: string;
   lexeme: LexemeId;
   syllable: string;
-  /** Lexical tone 1–4, or 5 for neutral. */
+  /**
+   * Primary (first-syllable) lexical tone, kept for quick display.
+   * For anything that reasons about pronunciation, use `tones`.
+   */
   tone: 1 | 2 | 3 | 4 | 5;
+  /**
+   * Lexical tone of EVERY syllable, in order: 银行 (yín háng) is [2, 2].
+   * A single tone cannot describe a multi-syllable word, and tone sequence is
+   * exactly what sandhi rules and pronunciation evidence need.
+   */
+  tones: (1 | 2 | 3 | 4 | 5)[];
   region: string; // e.g. "zh-CN"
   /** Contextual tone-sandhi notes, e.g. "third-tone sandhi before third tone". */
   sandhi?: string;

@@ -62,7 +62,10 @@ test("the graph carries pronunciation with tone and sandhi metadata (ADR-0009)",
   const g = packToGraph(buildCore60Pack().pack);
   const bank = g.pronunciationOf("bank.n.01")!; // 银行 — the spec's worked example
   assert.equal(bank.tone, 2);
+  // 银行 is yín háng — TWO syllables. A single tone cannot describe it.
+  assert.deepEqual(bank.tones, [2, 2]);
   assert.equal(bank.region, "zh-CN");
+  assert.deepEqual(g.pronunciationOf("hello.intj.01")!.tones, [3, 3], "你好 is nǐ hǎo");
   // 你好 is nǐ hǎo — the canonical 3+3 third-tone sandhi case.
   assert.match(g.pronunciationOf("hello.intj.01")!.sandhi!, /third-tone sandhi/);
 });

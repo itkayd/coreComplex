@@ -77,7 +77,7 @@ export function buildMiniPack(): MiniPack {
   // Pronunciation + grammar nodes (ADR-0009): 银行 = yín(2) háng(2), zh-CN.
   graph.addPronunciation({
     id: "bank.n.01.pron", lexeme: mkLexemeId("bank.n.01"), syllable: "yínháng",
-    tone: 2, region: "zh-CN", audioAssetId: "audio:bank.n.01", speaker: "cv-zh-001",
+    tone: 2, tones: [2, 2], region: "zh-CN", audioAssetId: "audio:bank.n.01", speaker: "cv-zh-001",
     packVersion: PACK_VERSION,
   });
   graph.addGrammarAtom({

@@ -88,6 +88,7 @@ npm run matrix    # seeded 9-profile 365-day simulation matrix report
 npm run build:pack               # build the immutable, signed Core 60 artefact
 npm run audio:qa -- <clipDir>    # screen candidate recordings against the audio gate
 npm run attributions             # regenerate ATTRIBUTIONS.{json,md} from the pack
+npm run e2e                      # Stage 2 browser gate: sessions, offline, a11y, pack integrity
 npm run speech                   # local synthetic-speech service (see docs/SETUP-SPEECH.md)
 npm run build:web                # build the pack + the offline PWA
 npm run dev --workspace=@dyr/web # run the plain body locally
@@ -132,6 +133,17 @@ fully useful with every optional layer absent.
 pack are stored — no game or profile store. On startup the kernel is rebuilt by
 replaying that log, so a reload resumes exactly where you were, with pending
 repairs intact and no penalty.
+
+**Pack integrity.** The PWA refuses a pack that does not validate structurally
+*and* still hash to its declared `contentHash`. The digest definition is shared
+by the Node build and the browser verifier, so they cannot drift. Tampering,
+truncation and version mismatch are all rejected with a diagnosable reason — a
+learner is never taught from content of unknown provenance.
+
+**Browser gate** (`npm run e2e`): 14 checks in a real browser at a mobile
+viewport with reduced motion — 3/7/15-minute sessions, a full task→result cycle,
+IndexedDB restore after interruption, offline reload, tampered-pack refusal, and
+**zero WCAG 2.1 AA violations (axe-core) on all five screens**.
 
 ## Open content pipeline
 

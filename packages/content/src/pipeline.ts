@@ -25,6 +25,7 @@ import {
 import { licenceGate, type SourceAsset } from "./index.ts";
 import { attributionReport } from "./index.ts";
 import { type RuntimePack } from "./runtime.ts";
+import { contentDigestInput } from "./validate.ts";
 import { declareAudio, isCanonical, type AudioAsset } from "./audio.ts";
 import { CORE60, CORE60_EDGES, type Core60Entry } from "./packs/core60.data.ts";
 
@@ -113,7 +114,15 @@ export function buildCore60Pack(opts: { retrievedAt?: number } = {}): BuildRepor
   }
 
   // 06 SIGN + VERSION — content hash over the normalised content.
-  const contentHash = sha256(JSON.stringify(normalised.map((e) => [e.id, e.simplified, e.traditional, e.pinyin, e.tones, e.senses, e.pos, e.frequency])));
+  // The digest input is defined once in validate.ts and shared with the browser
+  // verifier, so the two can never drift and disagree about the same pack.
+  const contentHash = sha256(contentDigestInput(
+    normalised.map((e) => ({
+      id: e.id, simplified: e.simplified, traditional: e.traditional,
+      pinyin: e.pinyin, senses: e.senses, pos: e.pos, frequency: e.frequency,
+    })),
+    new Map(normalised.map((e) => [e.id, e.tones as number[]])),
+  ));
   const packVersion = mkPackVersion(`${PACK_ID}@1.0.0+${contentHash.slice(0, 12)}`);
 
   // 02 MANIFEST + 03 LICENSE GATE
@@ -157,6 +166,7 @@ export function buildCore60Pack(opts: { retrievedAt?: number } = {}): BuildRepor
       lexeme: id,
       syllable: e.pinyin,
       tone: e.tones[0],
+      tones: e.tones,
       region: "zh-CN",
       sandhi: thirdToneSandhi(e.tones) ? "third-tone sandhi: 3+3 → 2+3" : undefined,
       audioAssetId: `audio:${e.id}`,

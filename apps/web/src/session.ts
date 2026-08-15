@@ -25,9 +25,10 @@ import { createFsrsAdapter } from "@dyr/fsrs-adapter";
 import { DyrKernel, type Plan, type SubmitResult } from "@dyr/kernel";
 import {
   importPack,
+  loadVerifiedPack,
   packToGraph,
   packAssetProvider,
-  type ExportedPack,
+  PackRejected,
   type RuntimePack,
 } from "@dyr/content/runtime";
 
@@ -51,10 +52,26 @@ export interface SessionState {
 
 let db: LearningDb | undefined;
 
+/**
+ * Load the content pack — and REFUSE it unless it validates and its content
+ * still hashes to the value it claims.
+ *
+ * A pack arrives as JSON over the network: TypeScript guarantees nothing about
+ * it at runtime. An unverified pack could be truncated, stale or swapped, and
+ * teaching from content of unknown provenance is exactly what the licence and
+ * immutability rules exist to prevent.
+ */
 export async function loadPack(): Promise<RuntimePack> {
   const res = await fetch(`${import.meta.env.BASE_URL}packs/dyr-core60.json`);
   if (!res.ok) throw new Error(`pack unavailable (${res.status})`);
-  return importPack((await res.json()) as ExportedPack);
+  try {
+    return importPack(await loadVerifiedPack(await res.json()));
+  } catch (error) {
+    if (error instanceof PackRejected) {
+      throw new Error(`content pack rejected (${error.reason}): ${error.message}`);
+    }
+    throw error;
+  }
 }
 
 /** Build a kernel and restore any persisted history. */

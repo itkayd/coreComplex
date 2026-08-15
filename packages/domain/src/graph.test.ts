@@ -14,7 +14,7 @@ test("the graph models Pronunciation and GrammarAtom, not just lexemes (Correcti
   const g = new LanguageGraph();
   const pack = PackVersion("t@1");
   g.addLexeme({ id: LexemeId("bank.n.01"), simplified: "银行", pinyin: "yínháng", senses: ["bank"], pos: "n", frequency: 5, packVersion: pack });
-  g.addPronunciation({ id: "p1", lexeme: LexemeId("bank.n.01"), syllable: "yínháng", tone: 2, region: "zh-CN", sandhi: "none", audioAssetId: "a1", packVersion: pack });
+  g.addPronunciation({ id: "p1", lexeme: LexemeId("bank.n.01"), syllable: "yínháng", tone: 2, tones: [2, 2], region: "zh-CN", sandhi: "none", audioAssetId: "a1", packVersion: pack });
   g.addGrammarAtom({ id: "g1", form: "是", function: "copula", prerequisites: [], contexts: ["identify"], examples: [], packVersion: pack });
 
   const pron = g.pronunciationOf("bank.n.01")!;
