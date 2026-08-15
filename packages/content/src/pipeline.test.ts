@@ -86,6 +86,7 @@ test("QA gate: a synthetic clip can NEVER become canonical, however clean (p.21)
     clean: true,
     naturalPace: true,
     licenceAndConsentClear: true,
+    screening: { passed: true, failures: [] },
   });
   assert.equal(result.state, "rejected");
   assert.ok(result.failures.includes("synthetic_cannot_be_canonical"));
@@ -103,6 +104,9 @@ test("QA gate: a verified human clip becomes canonical and unblocks the lexeme",
     clean: true,
     naturalPace: true,
     licenceAndConsentClear: true,
+    // Objective screening is mandatory for canonical: declarations alone only
+    // reach `unverified` (see audio-analysis.test.ts for the measured cases).
+    screening: { passed: true, failures: [] },
   });
   assert.equal(qa.state, "verified");
   assert.deepEqual(qa.failures, []);

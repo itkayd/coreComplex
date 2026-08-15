@@ -42,6 +42,9 @@ export function makeCore60Harness(opts: { provisionAudio?: boolean; startIso?: s
         clean: true,
         naturalPace: true,
         licenceAndConsentClear: true,
+        // Stands in for a completed provisioning run: a real clip that passed
+        // objective screening (see @dyr/content audio-analysis).
+        screening: { passed: true, failures: [] },
       });
       pack.audio.set(lexeme, { ...candidate, state: qa.state });
     }

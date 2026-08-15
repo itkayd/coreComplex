@@ -86,6 +86,7 @@ npm run matrix    # seeded 9-profile 365-day simulation matrix report
 
 # Stage 2 — content pack and the plain body
 npm run build:pack               # build the immutable, signed Core 60 artefact
+npm run audio:qa -- <clipDir>    # screen candidate recordings against the audio gate
 npm run build:web                # build the pack + the offline PWA
 npm run dev --workspace=@dyr/web # run the plain body locally
 ```
@@ -161,14 +162,20 @@ clean.
 ### Known limitations
 
 - **Canonical human audio is not bundled, so listening is gated.** Human-recorded
-  Mandarin is canonical and cannot be fabricated (spec p.21). The pack *declares*
-  the clip each lexeme needs and records its provisioning state; until a clip is
-  QA-verified the kernel refuses audio-primary tasks with
-  `missing_canonical_audio` rather than substituting anything. Reading works
-  fully offline today. `packages/content/src/audio.ts` ships the QA gate and the
-  documented provisioning path (Common Voice zh-CN / THCHS-30 / Commons), and the
-  tests prove the gate flips to open once a clip is verified. **Stage 2 is not
-  complete until those recordings are provisioned.**
+  Mandarin is canonical and cannot be fabricated (spec p.21). This environment's
+  network policy also denies Wikimedia and OpenSLR, so the clips could not be
+  fetched here. The pack *declares* the clip each lexeme needs and records its
+  provisioning state; until a clip passes the gate the kernel refuses
+  audio-primary tasks with `missing_canonical_audio` rather than substituting
+  anything. Reading works fully offline today.
+
+  The gate itself is built and measured, not a checkbox: `npm run audio:qa`
+  decodes each candidate WAV and **measures** clipping, noise floor, silence and
+  pace-against-syllable-count, and a measurement overrides a false "it's clean"
+  claim. What no measurement can establish — that the clip really says the word,
+  is Standard Mandarin, and is licence/consent clear — stays an explicit reviewer
+  declaration, and an unscreened clip can only ever reach `unverified`.
+  **Stage 2 is not complete until real recordings are provisioned and reviewed.**
 - Stroke data is a separately-licensed asset (Hanzi Writer), so handwriting stays
   gated.
 - `apps/service` remains a placeholder; the plain body is local-first and needs

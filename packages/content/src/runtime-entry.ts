@@ -7,6 +7,7 @@
  */
 export * from "./runtime.ts";
 export * from "./audio.ts";
+export * from "./audio-analysis.ts";
 export * from "./provider.ts";
 export { importPack, exportPack, type ExportedPack } from "./export.ts";
 

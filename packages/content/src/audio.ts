@@ -64,16 +64,39 @@ export interface AudioQaInput {
   /** Natural pace (pitch-preserving 0.75–1.0x playback is a UI concern). */
   naturalPace: boolean;
   licenceAndConsentClear: boolean;
+  /**
+   * Objective signal screening from `screenAudio()`. When supplied it OVERRIDES
+   * the declared `clean` / `naturalPace` claims: those two are measurable, so a
+   * measurement outranks an assertion. Without it they remain declarations and
+   * the result is marked `unverified` rather than `verified` — an unmeasured
+   * clip never reaches canonical.
+   */
+  screening?: ScreeningSummary;
+}
+
+/** The subset of a ScreeningResult the gate needs (see audio-analysis.ts). */
+export interface ScreeningSummary {
+  passed: boolean;
+  failures: string[];
 }
 
 export interface AudioQaResult {
   state: AudioProvisionState;
   failures: string[];
+  /** True when objective screening ran; false means claims were unmeasured. */
+  screened: boolean;
 }
 
 /**
- * The canonical-audio QA gate (spec p.21). Every condition must pass; a
- * synthetic clip fails outright regardless of technical quality.
+ * The canonical-audio QA gate (spec p.21).
+ *
+ * Two classes of evidence, deliberately kept apart:
+ *   - measured (clipping, noise, pace) — supplied via `screening`;
+ *   - declared (human-recorded, transcript, segmentation, consent) — no
+ *     measurement can establish these, so they stay explicit inputs.
+ *
+ * A synthetic clip fails outright regardless of technical quality, and a clip
+ * that was never screened can only reach `unverified`.
  */
 export function runAudioQa(input: AudioQaInput): AudioQaResult {
   const failures: string[] = [];
@@ -81,11 +104,21 @@ export function runAudioQa(input: AudioQaInput): AudioQaResult {
   if (!input.humanRecorded) failures.push("not_human_recorded");
   if (!input.transcriptMatches) failures.push("transcript_mismatch");
   if (!input.segmentationVerified) failures.push("segmentation_unverified");
-  if (!input.clean) failures.push("audio_quality");
-  if (!input.naturalPace) failures.push("unnatural_pace");
   if (!input.licenceAndConsentClear) failures.push("licence_or_consent");
   if (!input.asset.sha256) failures.push("no_audio_bytes");
-  return { state: failures.length === 0 ? "verified" : "rejected", failures };
+
+  if (input.screening) {
+    // Measurement outranks assertion for the objective properties.
+    for (const f of input.screening.failures) failures.push(`signal:${f}`);
+  } else {
+    if (!input.clean) failures.push("audio_quality");
+    if (!input.naturalPace) failures.push("unnatural_pace");
+  }
+
+  if (failures.length > 0) return { state: "rejected", failures, screened: Boolean(input.screening) };
+  // Passing declarations without measurement is not enough for canonical.
+  if (!input.screening) return { state: "unverified", failures: ["not_screened"], screened: false };
+  return { state: "verified", failures: [], screened: true };
 }
 
 /** Only a verified, non-synthetic clip counts as canonical (spec p.6 gate 5). */
