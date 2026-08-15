@@ -56,6 +56,40 @@ export interface LicenceDecision {
   reason: string;
 }
 
+/** One attribution row for the reproducible attribution output (spec p.28). */
+export interface AttributionEntry {
+  id: string;
+  sourceName: string;
+  licenseSpdx: string;
+  licenseUrl?: string;
+  author?: string;
+  attributionText?: string;
+  sha256: string;
+  immutableVersion: string;
+}
+
+/**
+ * Deterministic attribution report over a set of assets (spec p.28 "reproducible
+ * attribution output"; GET /attributions, spec p.24). Sorted by id so the same
+ * inputs always yield byte-identical output; only redistributable, allowed
+ * assets appear.
+ */
+export function attributionReport(assets: SourceAsset[]): AttributionEntry[] {
+  return assets
+    .filter((a) => licenceGate(a).allowed)
+    .map((a) => ({
+      id: a.id,
+      sourceName: a.sourceName,
+      licenseSpdx: a.licenseSpdx,
+      licenseUrl: a.licenseUrl,
+      author: a.author,
+      attributionText: a.attributionText,
+      sha256: a.sha256,
+      immutableVersion: String(a.immutableVersion),
+    }))
+    .sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+}
+
 export function licenceGate(asset: SourceAsset): LicenceDecision {
   const spdx = asset.licenseSpdx ?? "";
   if (!spdx || spdx === "UNKNOWN") return { allowed: false, reason: "missing or unknown licence" };

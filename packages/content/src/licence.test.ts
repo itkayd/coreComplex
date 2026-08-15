@@ -35,3 +35,15 @@ test("Pleco-sourced data is denied outright (p.7 PLECO BOUNDARY)", () => {
 test("free-to-view without redistribution rights is denied", () => {
   assert.equal(licenceGate(asset({ redistributionAllowed: false })).allowed, false);
 });
+
+import { attributionReport } from "./index.ts";
+
+test("attribution output is deterministic and excludes denied assets (p.28)", () => {
+  const allowed = asset({ id: "b", sourceName: "CC-CEDICT", licenseSpdx: "CC-BY-SA-4.0", attributionText: "CC-CEDICT (CC BY-SA)", sha256: "h2" });
+  const alsoAllowed = asset({ id: "a", sourceName: "Unihan", licenseSpdx: "CC0-1.0", sha256: "h1" });
+  const denied = asset({ id: "c", sourceName: "Pleco", licenseSpdx: "CC0-1.0", sha256: "h3" });
+  const r1 = attributionReport([allowed, alsoAllowed, denied]);
+  const r2 = attributionReport([denied, allowed, alsoAllowed]);
+  assert.deepEqual(r1, r2, "order-independent, reproducible");
+  assert.deepEqual(r1.map((e) => e.id), ["a", "b"], "sorted, Pleco excluded");
+});
