@@ -16,10 +16,12 @@ import type { Plan, SubmitResult } from "@dyr/kernel";
 import { audioUrl, resolveCanonicalAudio, type AudioAsset } from "@dyr/content/runtime";
 import { SyntheticAudioButton } from "./SyntheticAudioButton.tsx";
 import { SPEECH_AVAILABLE } from "./speech.ts";
+import { health, setSyncEnabled, syncEnabled, type SyncStatus } from "./sync.ts";
 import { CanonicalAudioCue, type CueStatus } from "./CanonicalAudioCue.tsx";
 import {
   MODE_MINUTES,
   PACK_BASE_URL,
+  backupNow,
   SKILL_LABEL,
   deleteAllLearningData,
   exportLearningData,
@@ -85,6 +87,9 @@ export function App() {
     setScreen("result");
     await save(state);
     setTick((t) => t + 1);
+    // Best-effort, deliberately not awaited: a slow or dead backup must never
+    // sit between the learner and their next task.
+    if (syncEnabled()) void backupNow(state.kernel).catch(() => undefined);
   }, [state, plan, index, save]);
 
   if (error) {
@@ -473,6 +478,16 @@ function Progress({ state }: { state: SessionState }) {
 /** SETTINGS — privacy, export and deletion controls (spec p.28 plain-slice done). */
 function Settings({ state }: { state: SessionState }) {
   const [msg, setMsg] = useState<string | null>(null);
+  const [backup, setBackup] = useState(() => syncEnabled());
+  const [status, setStatus] = useState<SyncStatus | null>(null);
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    health().then((h) => { if (live) setAvailable(h.configured); }).catch(() => { if (live) setAvailable(false); });
+    return () => { live = false; };
+  }, []);
   const canonical = state.pack.lexemes.filter((l) => {
     const a = state.pack.audio.get(String(l.id));
     return a?.state === "verified";
@@ -489,8 +504,29 @@ function Settings({ state }: { state: SessionState }) {
   };
 
   const onDelete = async () => {
-    await deleteAllLearningData();
-    setMsg("Deleted. Reload to start from empty.");
+    const result = await deleteAllLearningData();
+    setMsg(
+      result.backup === "deleted" ? "Deleted here and in the backup. Reload to start from empty."
+        : result.backup === "failed" ? "Deleted on this device. The backup could not be reached — try again while online."
+          : "Deleted. Reload to start from empty.",
+    );
+  };
+
+  const onToggleBackup = async () => {
+    const next = !backup;
+    setSyncEnabled(next);
+    setBackup(next);
+    if (!next) { setStatus(null); setMsg("Backup off. Nothing more will leave this device."); return; }
+    setBusy(true);
+    const result = await backupNow(state.kernel);
+    setStatus(result);
+    setBusy(false);
+  };
+
+  const onBackupNow = async () => {
+    setBusy(true);
+    setStatus(await backupNow(state.kernel));
+    setBusy(false);
   };
 
   return (
@@ -503,14 +539,49 @@ function Settings({ state }: { state: SessionState }) {
       <div className="card">
         <h2>Your data</h2>
         <p className="muted small">
-          Everything stays on this device. Nothing is uploaded. The learning log is yours to export
-          or delete at any time.
+          {backup
+            ? "Your learning log is stored on this device and copied to the backup below. Nothing else leaves it."
+            : "Everything stays on this device. Nothing is uploaded."}
+          {" "}The learning log is yours to export or delete at any time.
         </p>
         <div className="row">
           <button onClick={onExport}>Export log</button>
           <button onClick={onDelete}>Delete all</button>
         </div>
         {msg && <p className="small ok" role="status" style={{ marginTop: 10, marginBottom: 0 }}>{msg}</p>}
+      </div>
+
+      <div className="card">
+        <h2>Backup</h2>
+        <p className="muted small">
+          Off by default. When on, your learning log is copied to this app&rsquo;s own database so a
+          cleared browser or a lost phone does not erase it. Nothing else is sent — no recordings, no
+          analytics — and deleting your data deletes the backup too.
+        </p>
+        {available === false ? (
+          <p className="small muted" style={{ marginBottom: 0 }}>
+            No database is configured for this deployment, so backup is unavailable. The app works
+            fully without it.
+          </p>
+        ) : (
+          <>
+            <div className="row">
+              <button onClick={onToggleBackup} aria-pressed={backup} disabled={busy}>
+                {backup ? "Turn backup off" : "Turn backup on"}
+              </button>
+              <button onClick={onBackupNow} disabled={!backup || busy}>
+                {busy ? "Working…" : "Back up now"}
+              </button>
+            </div>
+            {status && (
+              <p className={`small ${status.state === "synced" ? "ok" : status.state === "diverged" ? "warn" : "muted"}`}
+                role="status" style={{ marginTop: 10, marginBottom: 0 }}>
+                {status.detail}
+                {status.state === "synced" && status.remoteEvents > 0 && ` (${status.remoteEvents} stored)`}
+              </p>
+            )}
+          </>
+        )}
       </div>
 
       <div className="card">

@@ -29,3 +29,9 @@ sources/review/audio/certified.json
 # Browser-gate output.
 artifacts/
 apps/web/dist-fixture/
+
+# Secrets. The database URL lives in Vercel's encrypted env vars, never here.
+.env
+.env.*
+!.env.example
+.vercel
