@@ -161,3 +161,13 @@ input:focus-visible { outline: 3px solid var(--reading); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Canonical listening cue. Sized as a comfortable touch target; the label is
+   generic text so a screen reader never announces the answer. */
+.cue-audio { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.audio-play {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 18px; padding: 14px 22px; min-height: 48px;
+  background: var(--listening); color: #06121b; border: none; font-weight: 600;
+}
+.audio-play:disabled { opacity: 0.55; }

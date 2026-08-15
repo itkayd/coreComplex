@@ -5,4 +5,7 @@
 export * from "./manifest.ts";
 export * from "./inbox.ts";
 export * from "./importers.ts";
+export * from "./review.ts";
+export * from "./certify.ts";
+export * from "./release.ts";
 export * from "./hsk-source.ts";

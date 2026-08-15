@@ -26,6 +26,7 @@ import { DyrKernel, type Plan, type SubmitResult } from "@dyr/kernel";
 import {
   importPack,
   loadVerifiedPack,
+  packAudioUrls,
   packToGraph,
   packAssetProvider,
   PackRejected,
@@ -61,8 +62,15 @@ let db: LearningDb | undefined;
  * teaching from content of unknown provenance is exactly what the licence and
  * immutability rules exist to prevent.
  */
+/**
+ * Where the pack and its content-addressed audio live. Audio paths inside the
+ * pack are relative to this, so nothing from the build machine's filesystem is
+ * ever exposed to the browser.
+ */
+export const PACK_BASE_URL = `${import.meta.env.BASE_URL}packs/`;
+
 export async function loadPack(): Promise<RuntimePack> {
-  const res = await fetch(`${import.meta.env.BASE_URL}packs/dyr-core60.json`);
+  const res = await fetch(`${PACK_BASE_URL}dyr-core60.json`);
   if (!res.ok) throw new Error(`pack unavailable (${res.status})`);
   try {
     return importPack(await loadVerifiedPack(await res.json()));
@@ -92,7 +100,26 @@ export async function openSession(): Promise<SessionState> {
   const persisted = await db.events.orderBy("localSequence").toArray();
   if (persisted.length > 0) kernel.hydrate(persisted);
 
+  // Install this pack's audio for offline use. Deliberately driven from the
+  // app rather than a precache list baked into the worker: the pack knows its
+  // own recordings, the cache is named for the pack version, and a future
+  // larger pack can be installed or evicted independently of the app shell.
+  void installPackAudio(pack);
+
   return { kernel, pack, lexemeIds: pack.lexemes.map((l) => l.id) };
+}
+
+/** Ask the service worker to cache exactly this pack's canonical recordings. */
+export async function installPackAudio(pack: RuntimePack): Promise<void> {
+  if (!("serviceWorker" in navigator)) return;
+  const urls = packAudioUrls(pack, PACK_BASE_URL);
+  if (urls.length === 0) return;
+  const registration = await navigator.serviceWorker.ready.catch(() => undefined);
+  registration?.active?.postMessage({
+    type: "dyr:install-pack",
+    packVersion: String(pack.packVersion),
+    urls,
+  });
 }
 
 /** Append every new event to the local log (append-only, never overwritten). */
@@ -147,7 +174,7 @@ export function submit(
   task: TaskContract,
   answer: string,
   latencyMs: number,
-  opts: { hintsUsed: number; revealed: boolean; replays: number },
+  opts: { hintsUsed: number; revealed: boolean; audioPlays: number },
 ): SubmitResult {
   const attempt: RawAttempt = {
     taskId: task.id,
@@ -156,7 +183,12 @@ export function submit(
     latencyMs,
     hintsUsed: opts.hintsUsed,
     answerRevealed: opts.revealed,
-    audioReplays: opts.replays,
+    // A real count of how many times the learner played the clip. The rubric
+    // allows one free play (`freeAudioReplays: 1`) and penalises each further
+    // one, so this must come from playback events — the previous hardcoded 1
+    // claimed every reading task had played audio and every listening task had
+    // played it exactly once.
+    audioReplays: opts.audioPlays,
   };
   return state.kernel.submitAttempt(task, attempt);
 }

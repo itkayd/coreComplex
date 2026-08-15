@@ -9,7 +9,13 @@ with known hashes, not on whatever an upstream API returned that day.
 sources/inbox/<sourceId>/
     manifest.json      provenance + declared files (REQUIRED)
     <files…>           the actual downloaded data
+
+sources/review/audio/
+    reviews.json       human certification, bound to each recording's sha256
 ```
+
+Declared paths must stay inside their source directory. Absolute paths, `..`
+traversal and symlinks pointing outside are refused before any byte is read.
 
 Nothing here is committed except the structure and the manifests — the source
 bytes are git-ignored.
@@ -83,8 +89,15 @@ ffmpeg -i clip.ogg -ac 1 -ar 16000 -sample_fmt s16 files/bank.n.01.wav
 `manifest.json` follows the same shape as above (`"sourceId": "audio"`, with
 `files` declaring at least `{ "path": "candidates.json", "role": "candidates" }`).
 
-`candidates.json` is an array. **The audio licence is a separate asset from any
-sentence licence and is never inherited:**
+`candidates.json` is an array. **The audio licence belongs to the recording and
+is never inherited — not from a sentence, and not from the batch manifest.** A
+recording whose own terms are narrower than the batch keeps its own terms; one
+claiming more than the batch grants is rejected for human review.
+
+Set `upstreamFamily` if you know it (`common-voice-zh-CN`, `thchs-30`,
+`wikimedia-commons`, `tatoeba`, `original-recording`); otherwise it is inferred
+from `source`, and left unset if `source` matches no known family. It is never
+defaulted to `original-recording`.
 
 ```json
 [
@@ -111,17 +124,71 @@ sentence licence and is never inherited:**
 
 Rejected automatically: missing/unknown licence, `-NC`, `-ND` (the pipeline
 normalises and transcodes, which no-derivatives forbids), no redistribution
-grant, missing file, hash mismatch, undecodable audio, and failed signal
+grant, a licence conflicting with the batch manifest, a path escaping the source
+directory, missing file, hash mismatch, undecodable audio, and failed signal
 screening (clipping, noise floor, silence, implausible duration).
+
+Refused at certification: an unknown lexeme id, a sentence recording offered as
+lexeme-level canonical audio, a transcript that disagrees with the pack's surface
+form, two certified recordings for one lexeme, and any recording without a
+hash-bound review.
 
 ```bash
 npm run content:import:audio
 ```
 
 Accepted recordings are stored as **human** assets in state `unverified`.
-Promotion to canonical still requires the reviewer declarations the gate demands:
-human-recorded, transcript match, segmentation verified, licence and consent
-clear. No importer can self-certify those.
+Promotion to canonical requires a human review — see below.
+
+### 2a. Reviewing recordings — `sources/review/audio/reviews.json`
+
+Signal QA measures whether a recording is technically usable. It cannot establish
+that a human said it, that they said the right word, that it is segmented
+correctly, or that the rights are clear. Those stay reviewer decisions, recorded
+on disk so a release is reproducible and auditable.
+
+```bash
+npm run content:audio:review                  # worklist: what needs a decision
+npm run content:audio:review -- --emit-templates   # blank records to fill in
+```
+
+That writes `sources/review/audio/reviews.template.json`. Fill in the
+declarations and merge them into `sources/review/audio/reviews.json`:
+
+```json
+[
+  {
+    "lexemeId": "bank.n.01",
+    "audioSha256": "3a84a228…64 hex chars…",
+    "humanRecorded": true,
+    "transcriptMatches": true,
+    "segmentationVerified": true,
+    "licenceAndConsentClear": true,
+    "reviewedBy": "your-name-or-id",
+    "reviewedAt": "2026-08-15T12:00:00Z",
+    "notes": ""
+  }
+]
+```
+
+**The review is bound to `audioSha256`, never to the lexeme id.** Replace the WAV
+and the old review stops applying: the candidate drops back to `unverified` and
+must be reviewed again. Every one of the four booleans is required — none is
+inferred, and any `false` blocks certification.
+
+If two recordings for the same lexeme both carry reviews, certification refuses
+both rather than picking one. Delete the review of the one you do not want; the
+remaining review *is* your selection.
+
+```bash
+npm run content:audio:certify
+```
+
+This applies the reviews, reports every rejection with a reason, and writes
+`sources/review/audio/certified.json`. `npm run build:pack` then compiles that
+certified set into the release: each recording is copied to
+`audio/<sha256>.wav` inside the pack, and its hash becomes part of the pack's
+`contentHash` — so changing a recording necessarily mints a new pack version.
 
 ---
 

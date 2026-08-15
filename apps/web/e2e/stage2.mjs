@@ -52,13 +52,20 @@ async function audit(page, label) {
   check(`a11y: ${label}`, violations.length === 0, violations.join(", "));
 }
 
-/** Answer the current task correctly; returns the skill that was practised. */
+/**
+ * Answer the current task.
+ *
+ * A task shows either a text cue or an audio cue. An audio task deliberately
+ * reveals nothing about its target, so there is no correct answer to look up —
+ * any answer still exercises the task→result cycle this gate is checking.
+ */
 async function answerCurrentTask(page) {
-  await page.waitForSelector("#answer");
-  const cue = (await page.textContent(".cue"))?.trim() ?? "";
+  await page.waitForSelector("#answer", { timeout: 15_000 });
+  const cueEl = await page.$(".cue");
+  const cue = cueEl ? (await cueEl.textContent())?.trim() ?? "" : "";
   await page.fill("#answer", answers.get(cue) ?? "x");
   await page.getByRole("button", { name: "Answer", exact: true }).click();
-  await page.waitForSelector('button:has-text("Next")');
+  await page.waitForSelector('button:has-text("Next")', { timeout: 15_000 });
 }
 
 async function run() {

@@ -39,6 +39,49 @@ jobs:
       - name: Build content pack + plain body
         run: npm run build:web
 
+  # The Stage 2 browser gate is a real CI requirement, not a manual footnote.
+  # It is a separate job because installing a browser roughly doubles the setup
+  # cost of the base job, and the invariant suite should stay fast.
+  browser-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+
+      # playwright and axe-core are declared devDependencies; only the browser
+      # binary needs a separate fetch. `--with-deps` installs the shared
+      # libraries headless Chromium needs on a clean runner.
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      # Builds the app, overlays the fixture pack, serves it, and runs both the
+      # Stage 2 gate and the canonical-listening gate, writing a machine-readable
+      # report that `stage2:gate` consumes.
+      - name: Browser gates (WCAG + offline + canonical listening)
+        run: npm run e2e
+
+      - name: Stage 2 gate
+        # Consumes artifacts/e2e-report.json from the step above, so the browser
+        # result is part of the release decision rather than taken on trust.
+        # Expected to fail until 60 human recordings are supplied and reviewed;
+        # `continue-on-error` keeps that an honest report rather than a red X on
+        # work that is not an engineering defect.
+        continue-on-error: true
+        run: npm run stage2:gate
+
+      - name: Upload gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage2-gate-reports
+          path: artifacts/
+          if-no-files-found: warn
+
   # The reduced-horizon matrix runs in `npm test`; the full 365-day matrix is
   # heavier, so it runs on demand and on the default branch rather than per push.
   full-matrix:

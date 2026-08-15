@@ -115,17 +115,43 @@ export function validatePackStructure(input: unknown): ValidationResult {
  *
  * Shared by the Node build and the browser verifier. Changing this changes every
  * pack version, which is correct: it IS the definition of pack identity.
+ *
+ * Canonical audio is part of that identity. Hashing the lexical JSON alone would
+ * let a pack keep its version while its recordings were swapped — the JSON hash
+ * would verify and the learner would hear different audio. Including each
+ * canonical recording's runtime hash means replacing a recording necessarily
+ * mints a new pack version, which is what immutability is supposed to mean.
+ *
+ * Only VERIFIED recordings contribute. A declared-but-unprovisioned slot has no
+ * bytes to hash, so a pack that gains its first real recording changes identity
+ * exactly once, when the recording arrives.
  */
 export function contentDigestInput(
   lexemes: { id: string; simplified: string; traditional?: string; pinyin: string; senses: string[]; pos: string; frequency: number }[],
   tones: Map<string, number[]>,
+  canonicalAudio: { lexeme: string; sha256: string }[] = [],
 ): string {
-  return JSON.stringify(
+  return JSON.stringify([
     lexemes.map((l) => [
       l.id, l.simplified, l.traditional ?? "", l.pinyin,
       tones.get(l.id) ?? [], l.senses, l.pos, l.frequency,
     ]),
-  );
+    [...canonicalAudio]
+      .map((a) => [a.lexeme, a.sha256.toLowerCase()] as const)
+      .sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)),
+  ]);
+}
+
+/**
+ * The audio rows that participate in pack identity: verified, non-synthetic,
+ * with runtime bytes. Defined once so build and browser agree exactly.
+ */
+export function canonicalAudioDigestRows(
+  audio: { lexeme: string; state?: string; synthetic?: boolean; runtime?: { sha256: string } }[],
+): { lexeme: string; sha256: string }[] {
+  return audio
+    .filter((a) => a.state === "verified" && a.synthetic !== true && a.runtime?.sha256)
+    .map((a) => ({ lexeme: a.lexeme, sha256: a.runtime!.sha256 }));
 }
 
 export type Sha256 = (input: string) => Promise<string>;
@@ -136,6 +162,16 @@ export const webCryptoSha256: Sha256 = async (input: string): Promise<string> =>
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 };
+
+/**
+ * Web Crypto digest over raw bytes — how runtime audio is verified before it is
+ * played. The text digest above cannot be reused: audio is not UTF-8.
+ */
+export async function webCryptoSha256Bytes(bytes: ArrayBuffer | Uint8Array): Promise<string> {
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", view as unknown as BufferSource);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 export interface IntegrityResult {
   ok: boolean;
@@ -156,7 +192,11 @@ export async function verifyPackIntegrity(pack: ExportedPack, sha256: Sha256 = w
   for (const pronunciation of pack.pronunciations) {
     tones.set(String(pronunciation.lexeme), pronunciation.tones ?? [pronunciation.tone]);
   }
-  const actual = await sha256(contentDigestInput(pack.lexemes as never, tones));
+  const actual = await sha256(contentDigestInput(
+    pack.lexemes as never,
+    tones,
+    canonicalAudioDigestRows(pack.audio ?? []),
+  ));
   return { ok: actual === pack.contentHash, expected: pack.contentHash, actual };
 }
 

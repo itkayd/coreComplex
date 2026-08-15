@@ -20,3 +20,12 @@ sources/inbox/**/*
 !sources/inbox/**/.gitkeep
 !sources/inbox/**/manifest.json
 !sources/inbox/**/candidates.json
+
+# Review artefacts: the reviews themselves ARE the release input and are
+# tracked; generated templates and the derived certified snapshot are not.
+sources/review/audio/reviews.template.json
+sources/review/audio/certified.json
+
+# Browser-gate output.
+artifacts/
+apps/web/dist-fixture/

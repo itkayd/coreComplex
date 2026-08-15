@@ -13,7 +13,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SKILLS, type Skill, type TaskContract } from "@dyr/domain";
 import type { Plan, SubmitResult } from "@dyr/kernel";
+import { audioUrl, resolveCanonicalAudio, type AudioAsset } from "@dyr/content/runtime";
 import { SyntheticAudioButton } from "./SyntheticAudioButton.tsx";
+import { CanonicalAudioCue, type CueStatus } from "./CanonicalAudioCue.tsx";
+import { PACK_BASE_URL } from "./session.ts";
 import {
   MODE_MINUTES,
   SKILL_LABEL,
@@ -59,7 +62,7 @@ export function App() {
     setTick((t) => t + 1);
   }, [state, save]);
 
-  const onAnswer = useCallback(async (answer: string, meta: { hintsUsed: number; revealed: boolean; replays: number; latencyMs: number }) => {
+  const onAnswer = useCallback(async (answer: string, meta: { hintsUsed: number; revealed: boolean; audioPlays: number; latencyMs: number }) => {
     if (!state || !plan) return;
     const task = plan.tasks[index];
     const res = submit(state, task, answer, meta.latencyMs, meta);
@@ -90,7 +93,8 @@ export function App() {
       <main className="app">
         {screen === "home" && <Home state={state} onStart={start} key={`h${tick}`} />}
         {screen === "task" && plan && plan.tasks[index] && (
-          <Task task={plan.tasks[index]} position={index + 1} total={plan.tasks.length} onAnswer={onAnswer} />
+          <Task task={plan.tasks[index]} position={index + 1} total={plan.tasks.length}
+            pack={state.pack} onAnswer={onAnswer} onSkip={next} />
         )}
         {screen === "result" && result && (
           <Result result={result.res} task={result.task} expected={result.expected} onNext={next} />
@@ -146,22 +150,53 @@ function Home({ state, onStart }: { state: SessionState; onStart: (m: SessionMod
   );
 }
 
-/** TASK — one cue, one action, no answer leakage (p.27). */
-function Task({ task, position, total, onAnswer }: {
-  task: TaskContract; position: number; total: number;
-  onAnswer: (answer: string, meta: { hintsUsed: number; revealed: boolean; replays: number; latencyMs: number }) => void;
+/**
+ * TASK — one cue, one action, no answer leakage (p.27).
+ *
+ * For an audio-primary task the cue is a real recording. The UI does not choose
+ * it: the planner issued the contract, the contract names its assetRefs, and the
+ * content layer resolves exactly those. Nothing about the target word — hanzi,
+ * pinyin, gloss or transcript — enters the DOM before the learner answers.
+ *
+ * If the recording cannot be loaded or fails its hash check the task becomes
+ * unanswerable. Skipping writes no event, so a learner who never heard the audio
+ * never produces retrieval evidence about it.
+ */
+function Task({ task, position, total, pack, onAnswer, onSkip }: {
+  task: TaskContract; position: number; total: number; pack: SessionState["pack"];
+  onAnswer: (answer: string, meta: { hintsUsed: number; revealed: boolean; audioPlays: number; latencyMs: number }) => void;
+  onSkip: () => void;
 }) {
   const [value, setValue] = useState("");
   const [hints, setHints] = useState(0);
-  const [startedAt] = useState(() => Date.now());
+  const [plays, setPlays] = useState(0);
+  const [cueStatus, setCueStatus] = useState<CueStatus>("loading");
+  const [startedAt, setStartedAt] = useState(() => Date.now());
 
-  useEffect(() => { setValue(""); setHints(0); }, [task.id]);
+  useEffect(() => {
+    setValue(""); setHints(0); setPlays(0); setCueStatus("loading"); setStartedAt(Date.now());
+  }, [task.id]);
 
   const audio = task.requiresHumanAudio;
+  const asset: AudioAsset | undefined = useMemo(
+    () => (audio ? resolveCanonicalAudio(pack, task.assetRefs) : undefined),
+    [audio, pack, task.assetRefs],
+  );
+
+  // The planner's asset gate should already have refused an audio task without
+  // canonical audio; if one arrives anyway, refuse it here too rather than
+  // rendering a cue that plays nothing.
+  const cueBroken = audio && (!asset || cueStatus === "failed");
+  const canAnswer = value.trim().length > 0 && !cueBroken;
+
   return (
     <form
       className="fade"
-      onSubmit={(e) => { e.preventDefault(); onAnswer(value, { hintsUsed: hints, revealed: false, replays: 1, latencyMs: Date.now() - startedAt }); }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!canAnswer) return;
+        onAnswer(value, { hintsUsed: hints, revealed: false, audioPlays: plays, latencyMs: Date.now() - startedAt });
+      }}
     >
       <p className="muted small">Task {position} of {total}</p>
       <SkillChip skill={task.skill} />
@@ -169,22 +204,43 @@ function Task({ task, position, total, onAnswer }: {
         <p className="muted small" style={{ marginTop: 0 }}>
           {audio ? "What did you hear?" : "What does this mean?"}
         </p>
-        <div className="cue" lang="zh-CN">{audio ? "🔊" : task.cue}</div>
+        {audio ? (
+          asset
+            ? <CanonicalAudioCue
+                key={task.id}
+                asset={asset}
+                url={audioUrl(PACK_BASE_URL, asset)}
+                onPlaybackChange={setPlays}
+                onStatusChange={setCueStatus}
+              />
+            : <p className="warn small" role="alert" style={{ margin: 0 }}>
+                This listening task has no canonical recording in the installed pack.
+              </p>
+        ) : (
+          <div className="cue" lang="zh-CN">{task.cue}</div>
+        )}
       </div>
 
       <label htmlFor="answer" className="muted small">Your answer</label>
       <input id="answer" type="text" autoFocus autoComplete="off" value={value}
+        disabled={cueBroken}
         onChange={(e) => setValue(e.target.value)} placeholder="Answer before revealing" />
 
       <div className="row" style={{ marginTop: 10 }}>
-        <button type="submit" className="primary" disabled={value.trim().length === 0}>Answer</button>
+        <button type="submit" className="primary" disabled={!canAnswer}>Answer</button>
       </div>
       <div className="row" style={{ marginTop: 8 }}>
-        <button type="button" onClick={() => setHints((h) => h + 1)}>
-          Hint{hints > 0 ? ` (${hints})` : ""}
-        </button>
+        {cueBroken
+          ? <button type="button" onClick={onSkip}>Skip this one</button>
+          : <button type="button" onClick={() => setHints((h) => h + 1)}>
+              Hint{hints > 0 ? ` (${hints})` : ""}
+            </button>}
       </div>
-      <p className="muted small">Answering from memory counts for more than a hint.</p>
+      <p className="muted small">
+        {cueBroken
+          ? "Nothing is recorded for a task you could not hear."
+          : "Answering from memory counts for more than a hint."}
+      </p>
     </form>
   );
 }

@@ -212,7 +212,9 @@ test("AUDIO LICENCE IS SEPARATE: a missing audio licence is rejected", () => {
     const result = importAudioCandidates(inbox).results[0];
     assert.equal(result.accepted, false);
     assert.ok(result.rejections.includes("licence_missing"));
-    assert.ok(result.detail.some((d) => /never inferred from the sentence licence/.test(d)));
+    // The reason must still say rights are not inherited — from the batch
+    // manifest OR the sentence — not merely that a field was blank.
+    assert.ok(result.detail.some((d) => /never inferred/.test(d) && /sentence licence/.test(d)));
   } finally { rmSync(inbox, { recursive: true, force: true }); }
 });
 

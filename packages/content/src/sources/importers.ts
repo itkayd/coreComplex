@@ -10,10 +10,10 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseCedict, type CedictEntry, type CedictParseReport } from "../import/cedict.ts";
 import { decodeWav, screenAudio, type ScreeningResult } from "../audio-analysis.ts";
-import { runAudioQa, type AudioAsset } from "../audio.ts";
+import { classifyUpstream, runAudioQa, type AudioAsset, type AudioProvenance } from "../audio.ts";
 import { licenceGate, type SourceAsset } from "../index.ts";
 import {
-  DEFAULT_INBOX, fileForRole, inspectSource, readTextMaybeGzip,
+  DEFAULT_INBOX, fileForRole, inspectSource, readTextMaybeGzip, resolveInside,
   type SourceStatus,
 } from "./inbox.ts";
 
@@ -88,8 +88,14 @@ export interface AudioCandidate {
   language: string;
   region?: string;
   speaker?: string;
-  /** Where the recording came from. */
+  /** Where the recording came from. Recorded verbatim, never defaulted. */
   source: string;
+  /**
+   * Approved-family classification. When omitted it is inferred from `source`;
+   * when `source` matches no known family it stays absent rather than being
+   * guessed. It is never silently set to "original-recording".
+   */
+  upstreamFamily?: AudioAsset["upstream"];
   upstreamId?: string;
   upstreamUrl?: string;
   /** AUDIO licence — separate from any sentence licence. */
@@ -102,16 +108,23 @@ export interface AudioCandidate {
   sha256?: string;
   /** Syllable count, used to screen duration against the transcript. */
   syllables?: number;
+  /**
+   * Marks a development/test recording. Flagged assets are refused by the
+   * production pack build; only the fixture builder opts in to them.
+   */
+  fixture?: boolean;
 }
 
 export type AudioRejectionCode =
   | "file_missing"
+  | "file_path_escape"
   | "hash_mismatch"
   | "unreadable_audio"
   | "licence_missing"
   | "licence_not_redistributable"
   | "licence_non_commercial"
   | "licence_no_derivatives"
+  | "licence_conflicts_with_batch"
   | "no_target"
   | "signal_screening_failed";
 
@@ -123,6 +136,12 @@ export interface AudioCandidateResult {
   sha256?: string;
   durationMs?: number;
   screening?: ScreeningResult;
+  /**
+   * The verified-contained path the bytes were read from. Carried here so no
+   * caller has to re-join an untrusted relative path and re-open the escape.
+   */
+  absolutePath?: string;
+  byteLength?: number;
   /** Present only when accepted: a human-provenance asset, never synthetic. */
   asset?: AudioAsset;
 }
@@ -174,7 +193,7 @@ export function importAudioCandidates(inboxDir = DEFAULT_INBOX): AudioImportRepo
     };
   }
 
-  const results = candidates.map((candidate) => evaluateAudioCandidate(candidate, dir));
+  const results = candidates.map((candidate) => evaluateAudioCandidate(candidate, dir, status.manifest));
   const accepted = results.filter((r) => r.accepted);
   return {
     installed: true, status, results, accepted,
@@ -182,7 +201,19 @@ export function importAudioCandidates(inboxDir = DEFAULT_INBOX): AudioImportRepo
   };
 }
 
-export function evaluateAudioCandidate(candidate: AudioCandidate, baseDir: string): AudioCandidateResult {
+/**
+ * Evaluate one candidate: rights, then bytes, then signal.
+ *
+ * `batch` is the source manifest covering the whole drop. It is deliberately NOT
+ * a source of rights: a broad batch grant must not upgrade an individual
+ * recording whose own terms are narrower, and a recording claiming a right the
+ * batch denies is a contradiction to escalate, not to resolve automatically.
+ */
+export function evaluateAudioCandidate(
+  candidate: AudioCandidate,
+  baseDir: string,
+  batch?: { licenseSpdx?: string; redistributionAllowed?: boolean; derivativeAllowed?: boolean },
+): AudioCandidateResult {
   const rejections: AudioRejectionCode[] = [];
   const detail: string[] = [];
 
@@ -190,7 +221,7 @@ export function evaluateAudioCandidate(candidate: AudioCandidate, baseDir: strin
   const spdx = (candidate.licenseSpdx ?? "").trim();
   if (spdx.length === 0 || /unknown/i.test(spdx)) {
     rejections.push("licence_missing");
-    detail.push("audio licence is absent — rights are never inferred from the sentence licence");
+    detail.push("audio licence is absent — rights are never inferred from the batch manifest or the sentence licence");
   } else {
     if (/-NC/i.test(spdx)) { rejections.push("licence_non_commercial"); detail.push(`NC licence: ${spdx}`); }
     if (/-ND/i.test(spdx)) {
@@ -199,7 +230,18 @@ export function evaluateAudioCandidate(candidate: AudioCandidate, baseDir: strin
     }
     if (!candidate.redistributionAllowed) {
       rejections.push("licence_not_redistributable");
-      detail.push("manifest does not grant redistribution");
+      detail.push("this recording does not grant redistribution");
+    }
+    // A recording claiming MORE than the batch it arrived in is a contradiction.
+    if (batch) {
+      if (candidate.redistributionAllowed && batch.redistributionAllowed === false) {
+        rejections.push("licence_conflicts_with_batch");
+        detail.push("recording claims redistribution but the batch manifest denies it — human review required");
+      }
+      if (candidate.derivativeAllowed && batch.derivativeAllowed === false) {
+        rejections.push("licence_conflicts_with_batch");
+        detail.push("recording claims derivative rights but the batch manifest denies them — human review required");
+      }
     }
   }
 
@@ -209,16 +251,26 @@ export function evaluateAudioCandidate(candidate: AudioCandidate, baseDir: strin
   }
 
   // --- bytes ---
-  const absolutePath = join(baseDir, candidate.file);
+  // The candidates file is operator-supplied, sometimes machine-generated from an
+  // upstream export, so its paths are untrusted: resolve inside the source tree
+  // or refuse to read at all.
+  const resolved = resolveInside(baseDir, candidate.file ?? "");
   let sha256: string | undefined;
   let screening: ScreeningResult | undefined;
   let durationMs: number | undefined;
+  let absolutePath: string | undefined;
+  let byteLength: number | undefined;
 
-  if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
+  if (!resolved.ok) {
+    rejections.push("file_path_escape");
+    detail.push(resolved.reason);
+  } else if (!existsSync(resolved.absolutePath) || !statSync(resolved.absolutePath).isFile()) {
     rejections.push("file_missing");
     detail.push(`missing file: ${candidate.file}`);
   } else {
-    const bytes = readFileSync(absolutePath);
+    const bytes = readFileSync(resolved.absolutePath);
+    absolutePath = resolved.absolutePath;
+    byteLength = bytes.byteLength;
     sha256 = createHash("sha256").update(bytes).digest("hex");
     if (candidate.sha256 && candidate.sha256.toLowerCase() !== sha256) {
       rejections.push("hash_mismatch");
@@ -240,37 +292,66 @@ export function evaluateAudioCandidate(candidate: AudioCandidate, baseDir: strin
   }
 
   if (rejections.length > 0) {
-    return { candidate, accepted: false, rejections, detail, sha256, durationMs, screening };
+    return { candidate, accepted: false, rejections, detail, sha256, durationMs, screening, absolutePath, byteLength };
   }
 
-  // Accepted: a HUMAN asset. `synthetic` is absent by construction, so this can
-  // never be confused with CosyVoice output.
+  // Accepted: a HUMAN asset carrying its real origin. `synthetic` is absent by
+  // construction, so this can never be confused with CosyVoice output.
+  const provenance: AudioProvenance = {
+    sourceName: candidate.source,
+    upstream: candidate.upstreamFamily ?? classifyUpstream(candidate.source),
+    upstreamId: candidate.upstreamId,
+    upstreamUrl: candidate.upstreamUrl,
+    licenseSpdx: candidate.licenseSpdx,
+    licenseUrl: candidate.licenseUrl,
+    attributionText: candidate.attributionText,
+    speaker: candidate.speaker,
+    region: candidate.region,
+    language: candidate.language,
+    sourceSha256: sha256!,
+    fixture: candidate.fixture,
+  };
   const asset: AudioAsset = {
     id: `audio:${candidate.lexemeId ?? candidate.sentenceId}`,
     lexeme: candidate.lexemeId ?? candidate.sentenceId!,
     transcript: candidate.transcript,
-    state: "unverified", // becomes `verified` only after the human QA declaration
-    upstream: "original-recording",
+    state: "unverified", // becomes `verified` only after the human review
+    upstream: provenance.upstream,
     upstreamId: candidate.upstreamId,
     licenseSpdx: candidate.licenseSpdx,
     speaker: candidate.speaker,
     region: candidate.region,
     sha256,
     durationMs,
+    provenance,
   };
-  return { candidate, accepted: true, rejections: [], detail, sha256, durationMs, screening, asset };
+  return { candidate, accepted: true, rejections: [], detail, sha256, durationMs, screening, absolutePath, byteLength, asset };
 }
 
 /**
- * Promote a screened candidate to canonical, given the human declarations the
- * gate requires. Kept separate so no importer can silently self-certify.
+ * Promote a screened candidate to canonical using a reviewer's declarations.
+ *
+ * Kept separate from ingestion so no importer can self-certify: passing objective
+ * signal screening says a recording is clean, not that it is human, correctly
+ * transcribed, correctly segmented, or clear of licence and consent problems.
+ *
+ * When `review` is supplied its `audioSha256` MUST equal the candidate's actual
+ * hash. A review of different bytes is not a weaker signal — it is not evidence
+ * about this recording at all, so it is refused outright.
  */
 export function certifyCandidate(
   result: AudioCandidateResult,
   human: { humanRecorded: boolean; transcriptMatches: boolean; segmentationVerified: boolean; licenceAndConsentClear: boolean },
+  review?: { audioSha256: string; reviewedBy: string; reviewedAt: string; notes?: string },
 ): { asset?: AudioAsset; state: string; failures: string[] } {
   if (!result.accepted || !result.asset || !result.screening) {
     return { state: "rejected", failures: ["candidate did not pass ingestion"] };
+  }
+  if (review && review.audioSha256.toLowerCase() !== (result.sha256 ?? "").toLowerCase()) {
+    return {
+      state: "unverified",
+      failures: [`review_hash_mismatch: review covers ${review.audioSha256.slice(0, 12)}…, candidate is ${(result.sha256 ?? "none").slice(0, 12)}…`],
+    };
   }
   const qa = runAudioQa({
     asset: result.asset,
@@ -283,7 +364,15 @@ export function certifyCandidate(
     screening: { passed: result.screening.passed, failures: result.screening.failures },
   });
   return {
-    asset: qa.state === "verified" ? { ...result.asset, state: "verified" } : undefined,
+    asset: qa.state === "verified"
+      ? {
+          ...result.asset,
+          state: "verified",
+          review: review
+            ? { audioSha256: review.audioSha256.toLowerCase(), reviewedBy: review.reviewedBy, reviewedAt: review.reviewedAt, notes: review.notes }
+            : undefined,
+        }
+      : undefined,
     state: qa.state,
     failures: qa.failures,
   };

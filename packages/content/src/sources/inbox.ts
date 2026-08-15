@@ -8,8 +8,8 @@
  * supply it, and keeps building whatever it legitimately can.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { licenceGate, type SourceAsset } from "../index.ts";
 import { validateManifest, type SourceManifest } from "./manifest.ts";
@@ -46,6 +46,48 @@ export interface SourceStatus {
   issues: string[];
   /** What the operator should do next, when something is missing. */
   action?: string;
+}
+
+/**
+ * Resolve a supplier-declared relative path INSIDE a source directory, or refuse.
+ *
+ * `join(baseDir, declared)` is not enough: `../../etc/passwd` joins perfectly
+ * happily and then reads a file the operator never declared. A candidates file
+ * is operator-supplied data, sometimes generated from an upstream export, so it
+ * is treated as untrusted input.
+ *
+ * Three separate escapes are refused:
+ *   - absolute paths (POSIX `/x` and Windows `C:\x` / UNC `\\host\share`);
+ *   - `..` traversal, checked after normalisation rather than by substring;
+ *   - symlinks pointing outside the tree, checked against the real path.
+ */
+export function resolveInside(baseDir: string, declared: string): { ok: true; absolutePath: string } | { ok: false; reason: string } {
+  if (declared.length === 0) return { ok: false, reason: "empty path" };
+  if (isAbsolute(declared) || /^[a-zA-Z]:[\\/]/.test(declared) || declared.startsWith("\\\\")) {
+    return { ok: false, reason: `absolute paths are not allowed: ${declared}` };
+  }
+  if (declared.includes("\0")) return { ok: false, reason: "path contains a NUL byte" };
+
+  const base = resolve(baseDir);
+  const target = resolve(base, declared);
+  const contains = (root: string, path: string) => path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
+  if (!contains(base, target)) {
+    return { ok: false, reason: `path escapes the source directory: ${declared}` };
+  }
+
+  // Symlink escape: a link inside the tree may still point outside it.
+  try {
+    const realBase = realpathSync(base);
+    const realTarget = realpathSync(target);
+    if (!contains(realBase, realTarget)) {
+      return { ok: false, reason: `path resolves through a symlink outside the source directory: ${declared}` };
+    }
+  } catch {
+    // Target does not exist yet — containment of the lexical path already holds,
+    // and the caller reports the missing file separately.
+  }
+
+  return { ok: true, absolutePath: target };
 }
 
 export function sha256File(absolutePath: string): string {
@@ -100,7 +142,12 @@ export function inspectSource(sourceId: string, inboxDir = DEFAULT_INBOX): Sourc
   const files: InstalledFile[] = [];
   const issues: string[] = [];
   for (const declared of manifest.files) {
-    const absolutePath = join(dir, declared.path);
+    const resolved = resolveInside(dir, declared.path);
+    if (!resolved.ok) {
+      issues.push(`declared file rejected: ${resolved.reason}`);
+      continue;
+    }
+    const absolutePath = resolved.absolutePath;
     if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
       issues.push(`declared file missing: ${declared.path}`);
       continue;

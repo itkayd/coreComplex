@@ -29,7 +29,67 @@ export type AudioProvisionState =
   | "rejected";
 
 /** Approved upstream families for human zh-CN audio (spec p.22, p.32). */
-export type AudioUpstream = "common-voice-zh-CN" | "thchs-30" | "wikimedia-commons" | "original-recording";
+export type AudioUpstream = "common-voice-zh-CN" | "thchs-30" | "wikimedia-commons" | "tatoeba" | "original-recording";
+
+/**
+ * Where a recording actually came from.
+ *
+ * Recorded verbatim rather than collapsed to a default: a Common Voice clip that
+ * emerges from the pipeline labelled `original-recording` is a provenance lie,
+ * and provenance is the thing the licence gate depends on. `upstream` is the
+ * coarse approved-family classification and may be absent when the source is
+ * legitimate but outside the known families; `sourceName` is never absent.
+ */
+export interface AudioProvenance {
+  /** Free-form origin exactly as the supplier declared it. */
+  sourceName: string;
+  /** Approved-family classification, when the source maps onto one. */
+  upstream?: AudioUpstream;
+  upstreamId?: string;
+  upstreamUrl?: string;
+  licenseSpdx: string;
+  licenseUrl?: string;
+  attributionText?: string;
+  speaker?: string;
+  region?: string;
+  language?: string;
+  /** sha256 of the bytes AS SUPPLIED, before any normalisation. */
+  sourceSha256: string;
+  /**
+   * Marks a development/test recording. A flagged asset can never enter a
+   * production pack — `buildCore60Pack` refuses it unless the caller explicitly
+   * opts in, which only the fixture builder does.
+   */
+  fixture?: boolean;
+}
+
+/**
+ * The immutable, content-addressed form the runtime actually plays.
+ *
+ * Content-addressed on purpose: the name carries no lexeme id, so a cached URL
+ * cannot leak the answer to a listening task, and identical bytes deduplicate.
+ */
+export interface AudioRuntimeRef {
+  /** Pack-relative path, e.g. `audio/<sha256>.wav`. Never a machine path. */
+  path: string;
+  /** sha256 of the runtime bytes — verified again before playback. */
+  sha256: string;
+  bytes: number;
+  mediaType: string;
+  /** Source hash this was derived from; equal to `sha256` when untransformed. */
+  derivedFrom: string;
+  /** What was done to the source bytes. */
+  transform: "none" | "normalised" | "transcoded";
+}
+
+/** The human review that promoted a recording to canonical, bound to its bytes. */
+export interface AudioReviewRef {
+  /** The exact bytes reviewed. A different hash means this review does not apply. */
+  audioSha256: string;
+  reviewedBy: string;
+  reviewedAt: string;
+  notes?: string;
+}
 
 export interface AudioAsset {
   id: string;
@@ -47,11 +107,33 @@ export interface AudioAsset {
   durationMs?: number;
   /** Set when the clip is synthetic — can never satisfy the canonical gate. */
   synthetic?: boolean;
+  /** Full origin record, preserved from candidate through to release. */
+  provenance?: AudioProvenance;
+  /** How the runtime locates and verifies the bytes. */
+  runtime?: AudioRuntimeRef;
+  /** The hash-bound human review, present only on a verified asset. */
+  review?: AudioReviewRef;
 }
 
 /** Declare the audio a lexeme needs, with no recording provisioned yet. */
 export function declareAudio(lexeme: string, transcript: string): AudioAsset {
   return { id: `audio:${lexeme}`, lexeme, transcript, state: "declared" };
+}
+
+/**
+ * Map a declared source name onto an approved upstream family.
+ *
+ * Returns `undefined` rather than guessing. An unrecognised source is not an
+ * error — it is simply not classified, and `sourceName` still records the truth.
+ */
+export function classifyUpstream(sourceName: string): AudioUpstream | undefined {
+  const s = sourceName.toLowerCase();
+  if (s.includes("common voice") || s.includes("common-voice") || s.includes("commonvoice")) return "common-voice-zh-CN";
+  if (s.includes("thchs")) return "thchs-30";
+  if (s.includes("wikimedia") || s.includes("wikipedia") || s.includes("commons")) return "wikimedia-commons";
+  if (s.includes("tatoeba")) return "tatoeba";
+  if (s.includes("original recording") || s.includes("original-recording")) return "original-recording";
+  return undefined;
 }
 
 export interface AudioQaInput {
@@ -127,25 +209,39 @@ export function isCanonical(asset: AudioAsset | undefined): boolean {
 }
 
 /**
- * How to provision the declared clips. Documented rather than executed: each
- * source has its own terms to accept and its own attribution obligations, and
- * the spec forbids an asset entering a released pack while provenance or licence
- * is ambiguous (spec p.31 PROHIBITED).
+ * How to provision the declared clips.
+ *
+ * Acquiring the recordings stays a human step: each source has its own terms to
+ * accept and its own attribution obligations, and the spec forbids an asset
+ * entering a released pack while provenance or licence is ambiguous (p.31
+ * PROHIBITED). Everything after acquisition is executed by the commands below.
  */
 export const AUDIO_PROVISIONING_GUIDE = `
 Provisioning canonical Mandarin audio for a released pack
 =========================================================
-1. Choose an approved upstream (spec p.22):
+1. Choose an approved upstream (spec p.22) and accept its terms:
    - Common Voice zh-CN (CC0 + conditions)  https://commonvoice.mozilla.org
    - THCHS-30 (Apache-2.0)                  https://openslr.org/18
    - Wikimedia Commons (per-asset allowlist)
    - Original recordings with a signed consent record
-2. For each declared AudioAsset, locate a clip whose transcript equals the
-   lexeme's transcript field, spoken in Standard Mandarin.
-3. Record upstream id, licence SPDX, speaker and region into the AudioAsset.
-4. Compute sha256 over the audio bytes and store it.
-5. Run runAudioQa(). Only a 'verified' result may ship.
-6. Rebuild the pack: the content hash and pack version change, because a
-   released pack is immutable (spec p.15 VERSION RULE).
-Until then the kernel correctly refuses audio-primary tasks for that lexeme.
+2. For each lexeme, obtain a clip of that word in Standard Mandarin and convert
+   it to PCM WAV:
+     ffmpeg -i clip.ogg -ac 1 -ar 16000 -sample_fmt s16 files/<lexemeId>.wav
+3. Describe the batch and every recording in sources/inbox/audio/
+   (manifest.json + candidates.json). The AUDIO licence belongs to the recording
+   and is never inherited from a sentence or from the batch manifest.
+     npm run content:import:audio     licence, hash and signal screening
+4. Review what the machine cannot judge — human-recorded, transcript matches,
+   segmentation verified, licence and consent clear:
+     npm run content:audio:review -- --emit-templates
+   Fill the templates in and merge them into sources/review/audio/reviews.json.
+   Each review is bound to the recording's sha256: re-record the clip and the
+   review no longer applies.
+5. Certify. Only a 'verified' result may ship:
+     npm run content:audio:certify
+6. Rebuild. The content hash and pack version change, because canonical audio is
+   part of pack identity and a released pack is immutable (spec p.15).
+     npm run build:web
+Until a lexeme has a certified recording, the kernel correctly refuses
+audio-primary tasks for it with missing_canonical_audio.
 `.trim();

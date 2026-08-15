@@ -21,8 +21,12 @@ language object → skill-specific memory trace → retrieval task → evidence
 
 - **Stage 1 (Kernel Proof): PASS** — headless brain, proven (see _Gate decision_).
 - **Stage 2 (Plain Receptive): in progress** — real 60-lexeme licensed pack,
-  content pipeline, and a working offline plain body (`apps/web`). Listening is
-  gated until canonical human audio is provisioned; see _Known limitations_.
+  content pipeline, offline plain body (`apps/web`), and the complete canonical
+  human-audio path: local ingestion → licence and hash checks → signal QA →
+  hash-bound human review → certified asset → content-addressed bundling →
+  offline cache → real playback → Listening evidence. The engineering is
+  finished and gated end-to-end; what remains is **content**: 60 licensed human
+  recordings and their reviews. See _Known limitations_.
 
 ## Kernel v0.2 status
 
@@ -80,19 +84,45 @@ native test runner); there is no build step.
 ```bash
 npm install       # workspace link + ts-fsrs / fast-check
 npm run typecheck # tsc --noEmit (real type checking; the runtime only strips types)
-npm test          # full suite (133 tests): unit + property + matrix + dependency
+npm test          # full suite: unit + property + matrix + dependency direction
 npm run sim       # single deterministic 365-day simulation
 npm run matrix    # seeded 9-profile 365-day simulation matrix report
 
-# Stage 2 — content pack and the plain body
-npm run build:pack               # build the immutable, signed Core 60 artefact
-npm run audio:qa -- <clipDir>    # screen candidate recordings against the audio gate
-npm run attributions             # regenerate ATTRIBUTIONS.{json,md} from the pack
-npm run e2e                      # Stage 2 browser gate: sessions, offline, a11y, pack integrity
-npm run speech                   # local synthetic-speech service (see docs/SETUP-SPEECH.md)
+# Stage 2 — content, audio and the plain body
+npm run content:sources          # what is installed, what is missing, what to do
+npm run content:import:audio     # ingest human-audio candidates from sources/inbox
+npm run content:audio:review     # reviewer worklist + blank review templates
+npm run content:audio:certify    # apply hash-bound reviews → certified canonical set
+npm run build:pack               # build the immutable, signed artefact + its audio
 npm run build:web                # build the pack + the offline PWA
+npm run e2e                      # browser gates (a11y, offline, canonical listening)
+npm run stage2:gate              # the single authoritative Stage 2 decision
+npm run attributions             # regenerate ATTRIBUTIONS.{json,md} from the pack
+npm run speech                   # local synthetic-speech service (docs/SETUP-SPEECH.md)
 npm run dev --workspace=@dyr/web # run the plain body locally
 ```
+
+### Release build order
+
+```bash
+npm run content:sources          # 1. confirm what has been supplied
+npm run content:import:audio     # 2. licence + hash + signal QA on the candidates
+npm run content:audio:review     # 3. produce the reviewer worklist
+#    …a human fills in sources/review/audio/reviews.json…
+npm run content:audio:certify    # 4. bind reviews to bytes → certified set
+npm run build:web                # 5. compile the pack (JSON + audio/<sha256>.wav)
+npm run e2e                      # 6. browser gates, writes artifacts/e2e-report.json
+npm run stage2:gate              # 7. the decision
+```
+
+The browser gate needs a Chromium binary once per machine:
+
+```bash
+npx playwright install chromium   # `--with-deps` on a clean Linux runner
+```
+
+`playwright` and `axe-core` are declared devDependencies, so `npm ci` followed by
+that install step is enough on a fresh clone.
 
 ## Proof
 
@@ -140,10 +170,31 @@ by the Node build and the browser verifier, so they cannot drift. Tampering,
 truncation and version mismatch are all rejected with a diagnosable reason — a
 learner is never taught from content of unknown provenance.
 
-**Browser gate** (`npm run e2e`): 14 checks in a real browser at a mobile
-viewport with reduced motion — 3/7/15-minute sessions, a full task→result cycle,
-IndexedDB restore after interruption, offline reload, tampered-pack refusal, and
-**zero WCAG 2.1 AA violations (axe-core) on all five screens**.
+**Canonical audio.** A listening task plays a real, verified human recording or
+it is not issued. Recordings are supplied offline (`sources/inbox/audio/`),
+checked for licence, declared hash and signal quality, then certified by a
+**human review bound to the exact bytes by sha256** — re-record the clip and the
+old review stops applying. Certified audio is bundled content-addressed at
+`audio/<sha256>.wav`, so the URL carries no lexeme id and cannot leak a listening
+answer, and its hash is part of the pack's `contentHash`: swapping a recording
+necessarily mints a new pack version. The browser re-verifies the bytes before
+playing them; a corrupted or missing recording makes the task unanswerable rather
+than producing retrieval evidence for audio the learner never heard. Synthetic
+speech (CosyVoice) can never satisfy this gate and appears only after an answer.
+
+**Browser gates** (`npm run e2e`): two suites in a real browser at a mobile
+viewport with reduced motion, writing `artifacts/e2e-report.json` for the Stage 2
+gate to consume.
+
+- *Stage 2* (14 checks): 3/7/15-minute sessions, a full task→result cycle,
+  IndexedDB restore after interruption, offline reload, tampered-pack refusal,
+  and **zero WCAG 2.1 AA violations (axe-core) on all five screens**.
+- *Canonical listening* (24 checks): content-addressed audio with full
+  provenance, a generically-labelled play control, no transcript/hanzi/gloss/id
+  in the DOM or any accessible name, real playback with honestly-counted
+  replays, Listening advancing while Reading/Speaking/Writing do not, the cached
+  recording still playing after an offline reload, and corrupted bytes being
+  refused with no learning event written.
 
 ## Open content pipeline
 
@@ -195,7 +246,9 @@ packages/domain        IDs, skills, clock, graph (+Pronunciation/GrammarAtom),
 packages/fsrs-adapter  ts-fsrs boundary (ONLY importer)
 packages/kernel        evidence, trace store, planner, frontier, workload,
                        rubrics, asset gate, event log, replay, observatory
-packages/content       manifests, licence gate, attribution output
+packages/content       manifests, licence gate, attribution output, pack
+                       pipeline + writer, offline source ingestion, audio
+                       certification, runtime audio resolution
 packages/senses        speech/audio/handwriting provider interfaces
 packages/layers        removable city/points projection (read-only facts)
 apps/web              plain body: offline-first PWA (Home/Task/Result/Progress/Settings)
@@ -212,37 +265,40 @@ p.28) is met: versioned contracts, deterministic clock, ts-fsrs adapter,
 evidence gate, independent SkillTraces, language graph, planner, workload
 governor, progression admission, immutable events, read-only observatory,
 property tests, 365-day simulations, an open-content fixture and reproducible
-attribution output. `npm test` is green (108 tests) and `npm run typecheck` is
-clean.
+attribution output. `npm test` and `npm run typecheck` are green (see CI).
 
 ### Known limitations
 
-- **Canonical human audio is not bundled, so listening is gated.** Human-recorded
-  Mandarin is canonical and cannot be fabricated (spec p.21). This environment's
-  network policy also denies Wikimedia and OpenSLR, so the clips could not be
-  fetched here. The pack *declares* the clip each lexeme needs and records its
-  provisioning state; until a clip passes the gate the kernel refuses
-  audio-primary tasks with `missing_canonical_audio` rather than substituting
-  anything. Reading works fully offline today.
+- **No human recordings are bundled yet, so listening is gated in the release
+  pack.** Human-recorded Mandarin is canonical and cannot be fabricated (spec
+  p.21). The whole path that turns a supplied recording into a played listening
+  cue is built, tested and gated end-to-end — what is missing is the recordings
+  themselves. Until one exists for a lexeme the pack *declares* the clip it needs
+  and the kernel refuses audio-primary tasks with `missing_canonical_audio`
+  rather than substituting anything. Reading works fully offline today.
 
-  The gate itself is built and measured, not a checkbox: `npm run audio:qa`
-  decodes each candidate WAV and **measures** clipping, noise floor, silence and
-  pace-against-syllable-count, and a measurement overrides a false "it's clean"
-  claim. What no measurement can establish — that the clip really says the word,
-  is Standard Mandarin, and is licence/consent clear — stays an explicit reviewer
-  declaration, and an unscreened clip can only ever reach `unverified`.
-  **Stage 2 is not complete until real recordings are provisioned and reviewed.**
+  Nothing about the gate is a checkbox. Signal QA **measures** clipping, noise
+  floor, silence and pace-against-syllable-count, and a measurement overrides a
+  false "it's clean" claim. What no measurement can establish — that the clip
+  really says the word, is Standard Mandarin, is correctly segmented, and is
+  licence/consent clear — stays an explicit reviewer declaration recorded in
+  `sources/review/audio/reviews.json` and bound to the exact bytes by sha256.
+  See `sources/README.md` for the file formats to supply.
+  **Stage 2 is not complete until real recordings are supplied and reviewed.**
+- The browser gate's listening suite runs against a **generated fixture pack**,
+  which proves the byte path without pretending the canonical requirement is met.
+  Fixture assets are flagged and the production build refuses them outright
+  (`AudioRefused`); a unit test asserts that refusal.
 - Stroke data is a separately-licensed asset (Hanzi Writer), so handwriting stays
   gated.
-- `apps/service` remains a placeholder; the plain body is local-first and needs
-  no server yet.
 - Speech/handwriting providers are interfaces (`@dyr/senses`); concrete
   whisper.cpp / Silero VAD / MFA implementations are Stage 4.
 
 ## Next gate
 
-**Finish Stage 2** by provisioning QA-verified human recordings for the Core 60
-so the listening channel opens, then **Stage 3 — Four-skill core**: speaking,
+**Finish Stage 2** by supplying 60 licensed human recordings and their reviews so
+the listening channel opens in the release pack — the pipeline that consumes them
+is complete and gated. Then **Stage 3 — Four-skill core**: speaking,
 typing, handwriting and composition through the same plain body and the same
 independent-trace contracts.
 ```

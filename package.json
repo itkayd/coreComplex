@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Dyr Mandarin Lab — adaptive Chinese memory kernel. Headless brain first (spec Stages 0–1).",
+  "description": "Dyr Mandarin Lab \u2014 adaptive Chinese memory kernel. Headless brain first (spec Stages 0\u20131).",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -21,16 +21,23 @@
     "audio:qa": "node packages/content/bin/audio-qa.ts",
     "speech": "node apps/service/src/index.ts",
     "attributions": "node packages/content/bin/attributions.ts",
-    "e2e": "node apps/web/e2e/stage2.mjs",
+    "e2e": "node scripts/e2e.ts",
     "content:sources": "node packages/content/bin/sources-status.ts",
     "content:import:cedict": "node packages/content/bin/import-cedict.ts",
     "content:import:audio": "node packages/content/bin/import-audio.ts",
     "content:import:tatoeba": "node packages/content/bin/import-tatoeba.ts",
-    "stage2:gate": "node scripts/stage2-gate.ts"
+    "stage2:gate": "node scripts/stage2-gate.ts",
+    "e2e:stage2": "node apps/web/e2e/stage2.mjs",
+    "e2e:listening": "node apps/web/e2e/listening.mjs",
+    "build:fixture-pack": "node scripts/build-fixture-pack.ts",
+    "content:audio:review": "node packages/content/bin/audio-review.ts",
+    "content:audio:certify": "node packages/content/bin/audio-certify.ts"
   },
   "devDependencies": {
     "@types/node": "22.10.5",
+    "axe-core": "^4.10.3",
     "fast-check": "4.9.0",
+    "playwright": "^1.56.1",
     "typescript": "5.9.2"
   }
 }
