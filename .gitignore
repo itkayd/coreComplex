@@ -4,3 +4,5 @@ dist/
 .DS_Store
 coverage/
 packs/
+apps/web/dist/
+apps/web/public/packs/

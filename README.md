@@ -6,9 +6,9 @@ scheduling via `ts-fsrs`, evidence-based grading, an explainable planner, a
 due-based workload governor, short-term repair, and a fully replayable event
 log.
 
-> **Brain first (spec p.2).** Games, profiles, points and worlds are removable
-> projections of accepted `LearningFact`s. This repository is the **kernel** —
-> not the learner PWA, which is deliberately not built (see _Next gate_).
+> **Brain first (spec p.2).** The kernel was built and proven before any screen.
+> Games, profiles, points and worlds are removable projections of accepted
+> `LearningFact`s and remain unbuilt — the plain body works without them.
 
 Central abstraction:
 
@@ -16,6 +16,13 @@ Central abstraction:
 language object → skill-specific memory trace → retrieval task → evidence
 → memory update → immutable LearningFact
 ```
+
+## Status
+
+- **Stage 1 (Kernel Proof): PASS** — headless brain, proven (see _Gate decision_).
+- **Stage 2 (Plain Receptive): in progress** — real 60-lexeme licensed pack,
+  content pipeline, and a working offline plain body (`apps/web`). Listening is
+  gated until canonical human audio is provisioned; see _Known limitations_.
 
 ## Kernel v0.2 status
 
@@ -71,11 +78,16 @@ native test runner); there is no build step.
 ## Commands
 
 ```bash
-npm install       # offline workspace link + ts-fsrs/fast-check (registry)
-npm run typecheck # tsc --noEmit (real type checking)
-npm test          # full suite (108 tests): unit + property + matrix + dependency
+npm install       # workspace link + ts-fsrs / fast-check
+npm run typecheck # tsc --noEmit (real type checking; the runtime only strips types)
+npm test          # full suite (133 tests): unit + property + matrix + dependency
 npm run sim       # single deterministic 365-day simulation
 npm run matrix    # seeded 9-profile 365-day simulation matrix report
+
+# Stage 2 — content pack and the plain body
+npm run build:pack               # build the immutable, signed Core 60 artefact
+npm run build:web                # build the pack + the offline PWA
+npm run dev --workspace=@dyr/web # run the plain body locally
 ```
 
 ## Proof
@@ -94,6 +106,30 @@ npm run matrix    # seeded 9-profile 365-day simulation matrix report
 - **Dependency isolation:** only `@dyr/fsrs-adapter` imports `ts-fsrs`; the domain
   is free of library types; the kernel is headless. `dependency.test.ts`.
 
+## Stage 2 — the plain receptive slice
+
+**Content.** `Dyr Core 60`: 60 high-frequency Mandarin lexemes authored for this
+project and released **CC0-1.0** — not scraped or reconstructed from any
+dictionary product, no Pleco data, no official HSK list. Includes 银行 (the
+spec's worked example) and real learner confusables (买/卖, 他/她, 日/月, 这/那),
+plus 69 characters, 60 pronunciation nodes with tone and third-tone-sandhi
+metadata, and grammar atoms. Built by the seven-stage pipeline (spec p.7) into an
+**immutable, sha256-signed, versioned artefact** — the pack version embeds the
+content hash, so a correction necessarily mints a new version.
+
+**The plain body** (`apps/web`): an installable, offline-first React PWA —
+Home / Task / Result / Progress / Settings. One primary Start button, 3/7/15
+minute sessions, one cue and one action per task with no answer leakage, and a
+Result screen that shows the kernel's *own* reason. Progress shows four
+independent skill meters and no single score. Settings carries export and
+deletion controls. No points, streaks, missions, city or narrative: the body is
+fully useful with every optional layer absent.
+
+**Persistence.** Only the learning event log (IndexedDB via Dexie) and the cached
+pack are stored — no game or profile store. On startup the kernel is rebuilt by
+replaying that log, so a reload resumes exactly where you were, with pending
+repairs intact and no penalty.
+
 ## Monorepo shape (spec p.25)
 
 ```
@@ -106,7 +142,8 @@ packages/kernel        evidence, trace store, planner, frontier, workload,
 packages/content       manifests, licence gate, attribution output
 packages/senses        speech/audio/handwriting provider interfaces
 packages/layers        removable city/points projection (read-only facts)
-apps/web, apps/service documented placeholders (later stages — not built)
+apps/web              plain body: offline-first PWA (Home/Task/Result/Progress/Settings)
+apps/service           placeholder (the plain body is local-first; no server yet)
 fixtures               licensed mini pack + deterministic simulations
 docs/adr               nine ADRs; docs/KERNEL_V0.2_AUDIT.md
 ```
@@ -121,21 +158,28 @@ property tests, 365-day simulations, an open-content fixture and reproducible
 attribution output. `npm test` is green (108 tests) and `npm run typecheck` is
 clean.
 
-### Known limitations (belong to later stages)
+### Known limitations
 
-- The bundled content is an **8-lexeme licensed fixture**. Spec Stage 2
-  (PLAIN RECEPTIVE) requires a real **60-lexeme** licensed pack with clear human
-  audio; sourcing/normalising it is Stage 2 content work. The 48/41/23/18
-  acceptance fixture is proven against a synthetic 60-node graph.
-- `apps/web` and `apps/service` are intentionally placeholders — the spec hard-
-  gates the PWA and service behind a proven brain.
+- **Canonical human audio is not bundled, so listening is gated.** Human-recorded
+  Mandarin is canonical and cannot be fabricated (spec p.21). The pack *declares*
+  the clip each lexeme needs and records its provisioning state; until a clip is
+  QA-verified the kernel refuses audio-primary tasks with
+  `missing_canonical_audio` rather than substituting anything. Reading works
+  fully offline today. `packages/content/src/audio.ts` ships the QA gate and the
+  documented provisioning path (Common Voice zh-CN / THCHS-30 / Commons), and the
+  tests prove the gate flips to open once a clip is verified. **Stage 2 is not
+  complete until those recordings are provisioned.**
+- Stroke data is a separately-licensed asset (Hanzi Writer), so handwriting stays
+  gated.
+- `apps/service` remains a placeholder; the plain body is local-first and needs
+  no server yet.
 - Speech/handwriting providers are interfaces (`@dyr/senses`); concrete
   whisper.cpp / Silero VAD / MFA implementations are Stage 4.
 
 ## Next gate
 
-**Stage 2 — Plain receptive body:** a real 60-lexeme licensed pack, the plain
-learner surface (Today / Task / Result / Progress) consuming the kernel through
-the versioned contracts, and offline 3/7/15-minute sessions. Not started —
-this pass stops at the proven brain by design.
+**Finish Stage 2** by provisioning QA-verified human recordings for the Core 60
+so the listening channel opens, then **Stage 3 — Four-skill core**: speaking,
+typing, handwriting and composition through the same plain body and the same
+independent-trace contracts.
 ```

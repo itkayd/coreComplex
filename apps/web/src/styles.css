@@ -1,0 +1,163 @@
+/*
+ * Permanent visual identity (spec p.21). Brain tokens and the four permanent
+ * skill-channel colours are fixed; level hue shows curriculum position, skill
+ * colour shows modality, and neither is ever used as a mastery verdict.
+ *
+ * Accessibility (spec p.27): WCAG AA contrast, keyboard navigation, large
+ * targets, reduced motion respected, and colour never carries meaning alone —
+ * every skill is also named in text.
+ */
+:root {
+  --bg: #090d16;
+  --surface: #141b2d;
+  --inactive: #354057;
+  --text: #f4f7fb;
+  --muted: #8d98aa;
+
+  --listening: #ff5da2;
+  --reading: #4ea8ff;
+  --writing: #b8e65c;
+  --speaking: #28c7d9;
+
+  --radius: 14px;
+  --tap: 48px; /* large, stable targets */
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 ui-sans-serif, system-ui, "Noto Sans SC", "PingFang SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 20px 18px 96px;
+}
+
+h1, h2, h3 { line-height: 1.2; margin: 0 0 12px; }
+h1 { font-size: 26px; letter-spacing: -0.01em; }
+h2 { font-size: 19px; }
+
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+/* Primary action: Home has exactly one (spec p.14 reduce start friction). */
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--inactive);
+  border-radius: 10px;
+  min-height: var(--tap);
+  padding: 12px 16px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:focus-visible { outline: 3px solid var(--reading); outline-offset: 2px; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.primary {
+  width: 100%;
+  background: var(--reading);
+  border-color: var(--reading);
+  color: #06121f;
+  font-weight: 650;
+  font-size: 17px;
+  min-height: 56px;
+}
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row > * { flex: 1 1 auto; }
+
+input[type="text"] {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: #0d1422;
+  border: 1px solid var(--inactive);
+  border-radius: 10px;
+  min-height: var(--tap);
+  padding: 12px 14px;
+}
+input:focus-visible { outline: 3px solid var(--reading); outline-offset: 2px; }
+
+/* Skill chips: colour PLUS a text label, never colour alone. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.s-listening { color: var(--listening); }
+.s-reading { color: var(--reading); }
+.s-writing { color: var(--writing); }
+.s-speaking { color: var(--speaking); }
+
+.cue {
+  font-size: 44px;
+  text-align: center;
+  padding: 22px 10px;
+  letter-spacing: 0.04em;
+}
+
+/* Four independent skill meters — never summed into one number. */
+.meter { margin-bottom: 14px; }
+.meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.track { height: 10px; background: var(--inactive); border-radius: 999px; overflow: hidden; }
+.fill { height: 100%; border-radius: 999px; }
+
+.nav {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.nav button {
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+}
+.nav button[aria-current="page"] { color: var(--text); box-shadow: inset 0 2px 0 var(--reading); }
+
+.banner {
+  border-left: 3px solid var(--listening);
+  padding: 10px 12px;
+  background: rgba(255, 93, 162, 0.08);
+  border-radius: 0 10px 10px 0;
+  margin-bottom: 12px;
+}
+
+.ok { color: var(--writing); }
+.warn { color: var(--listening); }
+
+/* Motion is explanatory and optional (spec p.28 MOTION). */
+.fade { animation: fade 180ms ease-out; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

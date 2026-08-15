@@ -5,7 +5,7 @@
  * the runtime. The runtime never re-runs the build pipeline — which is also why
  * the browser never needs node:crypto: it loads a finished, versioned artefact.
  */
-import type { RuntimePack } from "./pipeline.ts";
+import type { RuntimePack } from "./runtime.ts";
 import type { AudioAsset } from "./audio.ts";
 
 /** The serialisable form of a built pack. */

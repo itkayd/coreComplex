@@ -19,32 +19,17 @@ import {
   type LexemeId,
   type PackVersion,
   type Pronunciation,
-  LanguageGraph,
   LexemeId as mkLexemeId,
   PackVersion as mkPackVersion,
 } from "@dyr/domain";
-import { licenceGate, attributionReport, type AttributionEntry, type SourceAsset } from "./index.ts";
+import { licenceGate, type SourceAsset } from "./index.ts";
+import { attributionReport } from "./index.ts";
+import { type RuntimePack } from "./runtime.ts";
 import { declareAudio, isCanonical, type AudioAsset } from "./audio.ts";
 import { CORE60, CORE60_EDGES, type Core60Entry } from "./packs/core60.data.ts";
 
 export function sha256(input: string): string {
   return createHash("sha256").update(input, "utf8").digest("hex");
-}
-
-/** The immutable artefact the runtime consumes. */
-export interface RuntimePack {
-  packId: string;
-  packVersion: PackVersion;
-  /** sha256 over the normalised content — changing content changes the version. */
-  contentHash: string;
-  lexemes: Lexeme[];
-  characters: Character[];
-  pronunciations: Pronunciation[];
-  grammarAtoms: GrammarAtom[];
-  edges: Edge[];
-  audio: Map<string, AudioAsset>;
-  manifest: SourceAsset[];
-  attributions: AttributionEntry[];
 }
 
 export interface BuildReport {
@@ -228,12 +213,3 @@ function thirdToneSandhi(tones: number[]): boolean {
   return tones.length >= 2 && tones[0] === 3 && tones[1] === 3;
 }
 
-/** Build a LanguageGraph from a runtime pack (the kernel's read model). */
-export function packToGraph(pack: RuntimePack): LanguageGraph {
-  const g = new LanguageGraph();
-  for (const l of pack.lexemes) g.addLexeme(l);
-  for (const p of pack.pronunciations) g.addPronunciation(p);
-  for (const a of pack.grammarAtoms) g.addGrammarAtom(a);
-  for (const e of pack.edges) g.addEdge(e);
-  return g;
-}

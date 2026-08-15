@@ -105,6 +105,7 @@ export function licenceGate(asset: SourceAsset): LicenceDecision {
 
 // Pack pipeline, audio provisioning and the AssetProvider implementation.
 export * from "./audio.ts";
+export * from "./runtime.ts";
 export * from "./pipeline.ts";
 export * from "./provider.ts";
 export { CORE60, CORE60_EDGES } from "./packs/core60.data.ts";

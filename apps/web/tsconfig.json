@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "types": ["vite/client"],
+    "paths": {
+      "@dyr/domain": ["../../packages/domain/src/index.ts"],
+      "@dyr/kernel": ["../../packages/kernel/src/index.ts"],
+      "@dyr/fsrs-adapter": ["../../packages/fsrs-adapter/src/index.ts"],
+      "@dyr/content/runtime": ["../../packages/content/src/runtime-entry.ts"]
+    },
+    "baseUrl": "."
+  },
+  "include": ["src", "vite.config.ts"]
+}

@@ -32,6 +32,13 @@ jobs:
       - name: Tests (unit + property + matrix + dependency direction)
         run: npm test
 
+      # The plain body must build and typecheck under bundler resolution too.
+      - name: Typecheck the plain body (apps/web)
+        run: npm run typecheck --workspace=@dyr/web
+
+      - name: Build content pack + plain body
+        run: npm run build:web
+
   # The reduced-horizon matrix runs in `npm test`; the full 365-day matrix is
   # heavier, so it runs on demand and on the default branch rather than per push.
   full-matrix:

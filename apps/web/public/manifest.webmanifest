@@ -1,0 +1,11 @@
+{
+  "name": "Dyr Mandarin Lab",
+  "short_name": "Dyr",
+  "description": "Adaptive Mandarin memory lab. Listening, reading, speaking and writing are tracked separately.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#090D16",
+  "theme_color": "#090D16",
+  "icons": []
+}

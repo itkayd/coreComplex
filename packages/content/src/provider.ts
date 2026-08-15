@@ -10,7 +10,7 @@
  */
 import type { AssetProvider, LexemeId } from "@dyr/domain";
 import { isCanonical } from "./audio.ts";
-import type { RuntimePack } from "./pipeline.ts";
+import type { RuntimePack } from "./runtime.ts";
 
 export interface ProviderOptions {
   /**

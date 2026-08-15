@@ -9,16 +9,38 @@
     "exactOptionalPropertyTypes": false,
     "skipLibCheck": true,
     "verbatimModuleSyntax": false,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@dyr/domain": ["packages/domain/src/index.ts"],
-      "@dyr/kernel": ["packages/kernel/src/index.ts"],
-      "@dyr/fsrs-adapter": ["packages/fsrs-adapter/src/index.ts"],
-      "@dyr/content": ["packages/content/src/index.ts"],
-      "@dyr/senses": ["packages/senses/src/index.ts"],
-      "@dyr/layers": ["packages/layers/src/index.ts"]
+      "@dyr/domain": [
+        "packages/domain/src/index.ts"
+      ],
+      "@dyr/kernel": [
+        "packages/kernel/src/index.ts"
+      ],
+      "@dyr/fsrs-adapter": [
+        "packages/fsrs-adapter/src/index.ts"
+      ],
+      "@dyr/content": [
+        "packages/content/src/index.ts"
+      ],
+      "@dyr/senses": [
+        "packages/senses/src/index.ts"
+      ],
+      "@dyr/layers": [
+        "packages/layers/src/index.ts"
+      ]
     }
   },
-  "include": ["packages/**/*.ts", "fixtures/**/*.ts", "apps/**/*.ts"]
+  "include": [
+    "packages/**/*.ts",
+    "fixtures/**/*.ts"
+  ],
+  "exclude": [
+    "apps/web",
+    "**/dist",
+    "node_modules"
+  ]
 }
