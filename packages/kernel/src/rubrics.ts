@@ -31,8 +31,14 @@ export function buildRubric(family: TaskFamily): TaskRubric {
     rubricVersion: RUBRIC_VERSION,
     kind: spec.rubricKind,
     skill: spec.targetSkill,
-    matchPolicy:
-      spec.rubricKind === "receptive_exact" || isWriting ? "normalised" : "semantic_variants",
+    // Receptive tasks accept the alternatives the pack itself declares, supplied
+    // by the planner as a "|"-separated key: every sense of a word, and both
+    // written notations of the same pinyin. `semantic_variants` degrades exactly
+    // to `normalised` when there is only one alternative, so this loosens
+    // nothing — it stops a correct answer being marked wrong because the pack
+    // listed a synonym second. Production WRITING stays `normalised`: the
+    // expected answer is the hanzi, and there is only one right string.
+    matchPolicy: isWriting ? "normalised" : "semantic_variants",
     latencyBandMs: { fast: spec.estSeconds * 400, expected: spec.estSeconds * 1000 },
     leakage: DEFAULT_LEAKAGE,
     requiresCanonicalAudio: spec.requiresCanonicalAudio,

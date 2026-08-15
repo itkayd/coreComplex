@@ -32,6 +32,7 @@ import {
   memoryStateOf,
   mulberry32,
   traceId,
+  normalisePinyin,
 } from "@dyr/domain";
 import { TraceStore } from "./traceStore.ts";
 import { isRetained } from "./frontier.ts";
@@ -146,14 +147,30 @@ export class Planner {
     });
   }
 
+  /**
+   * The accepted answers for a cue direction, "|"-separated.
+   *
+   * Two kinds of alternative, both of which the pack already asserts are the
+   * same answer — this is not leniency, it is not marking a correct answer wrong:
+   *
+   *   MEANING — every declared sense counts. 我 declares ["I", "me"]; grading
+   *   only the first would fail a learner who knew the word perfectly well.
+   *
+   *   PINYIN — both written notations count. "wǒ" and "wo3" encode the SAME
+   *   syllable and the SAME tone, so accepting both costs no tone information.
+   *   Toneless "wo" is deliberately NOT accepted: it discards the tone, and tone
+   *   is part of the word (spec p.10). This also makes the task answerable on a
+   *   phone keyboard, which cannot type tone marks.
+   */
   private cueAnswer(dir: CueDirection, lex: Lexeme): { cue: string; answer: string } {
     const meaning = lex.senses[0] ?? lex.simplified;
+    const meanings = lex.senses.length > 0 ? lex.senses.join("|") : lex.simplified;
     switch (dir) {
-      case "audio_to_meaning": return { cue: `audio:${lex.id}`, answer: meaning };
-      case "hanzi_to_meaning": return { cue: lex.simplified, answer: meaning };
-      case "hanzi_to_sound": return { cue: lex.simplified, answer: lex.pinyin };
-      case "meaning_to_speech": return { cue: meaning, answer: lex.pinyin };
-      case "scene_to_speech": return { cue: `scene:${lex.id}`, answer: lex.pinyin };
+      case "audio_to_meaning": return { cue: `audio:${lex.id}`, answer: meanings };
+      case "hanzi_to_meaning": return { cue: lex.simplified, answer: meanings };
+      case "hanzi_to_sound": return { cue: lex.simplified, answer: pinyinAnswers(lex.pinyin) };
+      case "meaning_to_speech": return { cue: meaning, answer: pinyinAnswers(lex.pinyin) };
+      case "scene_to_speech": return { cue: `scene:${lex.id}`, answer: pinyinAnswers(lex.pinyin) };
       case "meaning_to_hanzi": return { cue: meaning, answer: lex.simplified };
       case "audio_to_hanzi": return { cue: `audio:${lex.id}`, answer: lex.simplified };
     }
@@ -370,4 +387,22 @@ function entrySpecFor(skill: Skill): TaskFamilySpec {
 /** For reviews we reuse the entry family's rubric/cue for the skill. */
 function currentSpecFor(skill: Skill): TaskFamilySpec {
   return entrySpecFor(skill);
+}
+
+/**
+ * Both written notations of the same pinyin, "|"-separated: "wǒ|wo3".
+ *
+ * Tone is preserved in both, so nothing about the answer is weakened. Falls back
+ * to the source form alone if the string cannot be parsed — the spec forbids
+ * destroying the source representation, so an unparseable pronunciation is
+ * graded as written rather than dropped.
+ */
+export function pinyinAnswers(pinyin: string): string {
+  try {
+    const { marked, numbered } = normalisePinyin(pinyin);
+    const forms = new Set([pinyin.trim(), marked, numbered, numbered.replace(/\s+/g, "")]);
+    return [...forms].filter((f) => f.length > 0).join("|");
+  } catch {
+    return pinyin;
+  }
 }

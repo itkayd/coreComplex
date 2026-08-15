@@ -58,8 +58,8 @@ async function findListeningTask(page, maxTasks = 12) {
     // Answer whatever this is (wrongly is fine) to advance the plan.
     await page.fill("#answer", "x");
     await page.getByRole("button", { name: "Answer", exact: true }).click();
-    await page.waitForSelector('button:has-text("Next")', { timeout: 10_000 });
-    await page.getByRole("button", { name: "Next" }).click();
+    await page.waitForSelector('button:has-text("Next"), button:has-text("Finish session")', { timeout: 10_000 });
+    await page.click('button:has-text("Next"), button:has-text("Finish session")');
   }
   return false;
 }
@@ -73,11 +73,12 @@ async function findListeningTask(page, maxTasks = 12) {
  */
 async function profile(page) {
   for (let i = 0; i < 15 && !(await page.$('nav.nav')); i++) {
-    const next = await page.$('button:has-text("Next")');
-    if (next) { await next.click(); continue; }
+    // The last task's advance button reads "Finish session", not "Next".
+    const advance = await page.$('button:has-text("Next"), button:has-text("Finish session")');
+    if (advance) { await advance.click(); continue; }
     if (await page.$("#answer")) {
       const disabled = await page.$eval("#answer", (el) => el.disabled);
-      if (disabled) await page.getByRole("button", { name: /Skip this one/ }).click();
+      if (disabled) await page.getByRole("button", { name: /^Skip$/ }).click();
       else {
         await page.fill("#answer", "x");
         await page.getByRole("button", { name: "Answer", exact: true }).click();
@@ -259,7 +260,7 @@ async function run() {
       };
       req.onerror = () => resolve(-1);
     }));
-    await bp.getByRole("button", { name: /Skip this one/ }).click({ timeout: 10_000 });
+    await bp.getByRole("button", { name: /^Skip$/ }).click({ timeout: 10_000 });
     await bp.waitForTimeout(500);
     const after = await bp.evaluate(() => new Promise((resolve) => {
       const req = indexedDB.open("dyr-learning");

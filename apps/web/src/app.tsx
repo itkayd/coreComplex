@@ -11,14 +11,15 @@
  * reason. No scheduler control appears inside the ordinary review flow (p.27).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SKILLS, type Skill, type TaskContract } from "@dyr/domain";
+import { SKILLS, type Lexeme, type Skill, type TaskContract } from "@dyr/domain";
 import type { Plan, SubmitResult } from "@dyr/kernel";
 import { audioUrl, resolveCanonicalAudio, type AudioAsset } from "@dyr/content/runtime";
 import { SyntheticAudioButton } from "./SyntheticAudioButton.tsx";
+import { SPEECH_AVAILABLE } from "./speech.ts";
 import { CanonicalAudioCue, type CueStatus } from "./CanonicalAudioCue.tsx";
-import { PACK_BASE_URL } from "./session.ts";
 import {
   MODE_MINUTES,
+  PACK_BASE_URL,
   SKILL_LABEL,
   deleteAllLearningData,
   exportLearningData,
@@ -31,6 +32,11 @@ import {
 } from "./session.ts";
 
 type Screen = "home" | "task" | "result" | "progress" | "settings";
+
+/** Accepted answers arrive "|"-separated; never show the raw key to a learner. */
+function splitAnswers(expected: string): string[] {
+  return expected.split("|").map((s) => s.trim()).filter((s) => s.length > 0);
+}
 
 export function App() {
   const [state, setState] = useState<SessionState | null>(null);
@@ -62,6 +68,15 @@ export function App() {
     setTick((t) => t + 1);
   }, [state, save]);
 
+  const next = useCallback(() => {
+    if (!plan) return;
+    const n = index + 1;
+    if (n >= plan.tasks.length) { setScreen("home"); setPlan(null); setIndex(0); setResult(null); return; }
+    setIndex(n);
+    setResult(null);
+    setScreen("task");
+  }, [plan, index]);
+
   const onAnswer = useCallback(async (answer: string, meta: { hintsUsed: number; revealed: boolean; audioPlays: number; latencyMs: number }) => {
     if (!state || !plan) return;
     const task = plan.tasks[index];
@@ -72,40 +87,48 @@ export function App() {
     setTick((t) => t + 1);
   }, [state, plan, index, save]);
 
-  const next = useCallback(() => {
-    if (!plan) return;
-    const n = index + 1;
-    if (n >= plan.tasks.length) { setScreen("home"); setPlan(null); setIndex(0); return; }
-    setIndex(n);
-    setResult(null);
-    setScreen("task");
-  }, [plan, index]);
-
   if (error) {
-    return <main className="app"><h1>Dyr Mandarin Lab</h1><div className="card"><p className="warn">{error}</p><p className="muted small">Run <code>npm run build:pack</code> so the content pack is available.</p></div></main>;
+    return (
+      <main className="app">
+        <h1>Dyr Mandarin Lab</h1>
+        <div className="card">
+          <p className="warn">{error}</p>
+          <p className="muted small">The content pack could not be loaded or failed its integrity check.</p>
+        </div>
+      </main>
+    );
   }
   if (!state) {
-    return <main className="app"><h1>Dyr Mandarin Lab</h1><p className="muted">Loading your content pack…</p></main>;
+    return (
+      <main className="app">
+        <h1>Dyr Mandarin Lab</h1>
+        <p className="muted">Loading your content pack…</p>
+      </main>
+    );
   }
+
+  const inSession = screen === "task" || screen === "result";
 
   return (
     <>
-      <main className="app">
+      <main className={`app${inSession ? " is-session" : ""}`}>
         {screen === "home" && <Home state={state} onStart={start} key={`h${tick}`} />}
         {screen === "task" && plan && plan.tasks[index] && (
-          <Task task={plan.tasks[index]} position={index + 1} total={plan.tasks.length}
+          <Task task={plan.tasks[index]} position={index} total={plan.tasks.length}
             pack={state.pack} onAnswer={onAnswer} onSkip={next} />
         )}
-        {screen === "result" && result && (
-          <Result result={result.res} task={result.task} expected={result.expected} onNext={next} />
+        {screen === "result" && result && plan && (
+          <Result result={result.res} task={result.task} expected={result.expected}
+            pack={state.pack} position={index} total={plan.tasks.length} onNext={next} />
         )}
         {screen === "progress" && <Progress state={state} key={`p${tick}`} />}
         {screen === "settings" && <Settings state={state} />}
       </main>
-      {screen !== "task" && screen !== "result" && (
+      {!inSession && (
         <nav className="nav" aria-label="Sections">
           {(["home", "progress", "settings"] as Screen[]).map((s) => (
             <button key={s} onClick={() => setScreen(s)} aria-current={screen === s ? "page" : undefined}>
+              <NavIcon screen={s} />
               {s[0].toUpperCase() + s.slice(1)}
             </button>
           ))}
@@ -115,35 +138,62 @@ export function App() {
   );
 }
 
-/** HOME — one primary Start button, time remaining, no overdue mountain (p.14). */
+/** HOME — one primary Start button, no overdue mountain (spec p.14). */
 function Home({ state, onStart }: { state: SessionState; onStart: (m: SessionMode) => void }) {
   const workload = useMemo(() => state.kernel.workload(), [state]);
   const profile = useMemo(() => state.kernel.frontier.profile(), [state]);
   const weakest = state.kernel.frontier.weakestSkill();
   const forecast = workload.forecasts.find((f) => f.horizonDays === 7 && f.scenario === "expected");
-  const started = SKILLS.some((s) => profile[s].retained > 0);
+  const started = SKILLS.some((s) => profile[s].retained > 0 || profile[s].total > 0);
+  const minutes = Math.round(forecast?.dueMinutes ?? 0);
 
   return (
-    <div className="fade">
-      <h1>Dyr Mandarin Lab</h1>
-      <p className="muted">{started ? "Ready when you are." : "Start with a short, useful session."}</p>
+    <div className="fade stack">
+      <header>
+        <p className="eyebrow">Mandarin</p>
+        <h1>Dyr Mandarin Lab</h1>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          {started ? "Ready when you are." : "Start with a short, useful session."}
+        </p>
+      </header>
 
       {workload.freezeIntroductions && (
-        <div className="banner"><strong>No new items today.</strong>{" "}
-          <span className="muted small">{workload.reasons[0] ?? "Repair comes first."}</span></div>
+        <div className="banner">
+          <span className="mark" aria-hidden="true">!</span>
+          <span className="small">
+            <strong>No new words today.</strong>{" "}
+            <span className="muted">{workload.reasons[0] ?? "Repair comes first."}</span>
+          </span>
+        </div>
       )}
 
       <button className="primary" onClick={() => onStart("default")}>Start 7 minutes</button>
-      <div className="row" style={{ marginTop: 10 }}>
-        <button onClick={() => onStart("rescue")}>3 min rescue</button>
-        <button onClick={() => onStart("core")}>15 min core</button>
+      <div className="row">
+        <button onClick={() => onStart("rescue")}>3 min</button>
+        <button onClick={() => onStart("core")}>15 min</button>
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <h2>Next 7 days</h2>
-        <p className="muted small" style={{ margin: 0 }}>
-          About {Math.round(forecast?.dueMinutes ?? 0)} minutes of review expected.
-          {" "}{SKILL_LABEL[weakest]} needs repair.
+      <div className="card">
+        <h2>Four channels</h2>
+        <p className="muted small">Tracked separately. There is no single score.</p>
+        <ul className="channels">
+          {SKILLS.map((skill) => (
+            <li key={skill} className={`s-${skill}`}>
+              <span className="dot" aria-hidden="true" />
+              <span className="name">{SKILL_LABEL[skill]}</span>
+              <span className="count">{profile[skill].retained}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="card">
+        <h2>The week ahead</h2>
+        <p className="muted small" style={{ marginBottom: 0 }}>
+          {minutes > 0
+            ? `About ${minutes} ${minutes === 1 ? "minute" : "minutes"} of review is due over the next seven days.`
+            : "Nothing is due yet. A first session will set your schedule."}
+          {" "}{SKILL_LABEL[weakest]} is your weakest channel and gets repair priority.
         </p>
       </div>
     </div>
@@ -151,7 +201,7 @@ function Home({ state, onStart }: { state: SessionState; onStart: (m: SessionMod
 }
 
 /**
- * TASK — one cue, one action, no answer leakage (p.27).
+ * TASK — one cue, one action, no answer leakage (spec p.27).
  *
  * For an audio-primary task the cue is a real recording. The UI does not choose
  * it: the planner issued the contract, the contract names its assetRefs, and the
@@ -182,28 +232,37 @@ function Task({ task, position, total, pack, onAnswer, onSkip }: {
     () => (audio ? resolveCanonicalAudio(pack, task.assetRefs) : undefined),
     [audio, pack, task.assetRefs],
   );
+  const lexeme = pack.lexemes.find((l) => String(l.id) === String(task.lexeme));
 
   // The planner's asset gate should already have refused an audio task without
   // canonical audio; if one arrives anyway, refuse it here too rather than
   // rendering a cue that plays nothing.
   const cueBroken = audio && (!asset || cueStatus === "failed");
   const canAnswer = value.trim().length > 0 && !cueBroken;
+  const wantsHanzi = task.family === "meaning_to_typed_word" || task.family === "audio_to_hanzi";
+  const wantsPinyin = task.family === "hanzi_to_sound";
 
   return (
     <form
-      className="fade"
+      className="fade grow"
+      style={{ display: "flex", flexDirection: "column" }}
       onSubmit={(e) => {
         e.preventDefault();
         if (!canAnswer) return;
         onAnswer(value, { hintsUsed: hints, revealed: false, audioPlays: plays, latencyMs: Date.now() - startedAt });
       }}
     >
-      <p className="muted small">Task {position} of {total}</p>
-      <SkillChip skill={task.skill} />
-      <div className="card">
-        <p className="muted small" style={{ marginTop: 0 }}>
-          {audio ? "What did you hear?" : "What does this mean?"}
-        </p>
+      <div className="session-head">
+        <div className="pips" role="img" aria-label={`Task ${position + 1} of ${total}`}>
+          {Array.from({ length: total }, (_, i) => (
+            <span key={i} className={`pip${i < position ? " done" : i === position ? " now" : ""}`} />
+          ))}
+        </div>
+        <SkillChip skill={task.skill} />
+      </div>
+
+      <div className="cue-wrap">
+        <p className="eyebrow">{audio ? "What did you hear?" : wantsHanzi ? "Write this word" : wantsPinyin ? "How does this sound?" : "What does this mean?"}</p>
         {audio ? (
           asset
             ? <CanonicalAudioCue
@@ -213,89 +272,150 @@ function Task({ task, position, total, pack, onAnswer, onSkip }: {
                 onPlaybackChange={setPlays}
                 onStatusChange={setCueStatus}
               />
-            : <p className="warn small" role="alert" style={{ margin: 0 }}>
-                This listening task has no canonical recording in the installed pack.
+            : <p className="warn" role="alert">
+                This listening task has no recording in the installed pack.
               </p>
+        ) : wantsHanzi ? (
+          <p className="cue-en">{task.cue}</p>
         ) : (
-          <div className="cue" lang="zh-CN">{task.cue}</div>
+          <p className="cue" lang="zh-Hans">{task.cue}</p>
+        )}
+        {hints > 0 && lexeme && (
+          <p className="muted small" role="status">
+            {wantsHanzi
+              ? `${lexeme.pinyin} · ${lexeme.simplified.length} character${lexeme.simplified.length === 1 ? "" : "s"}`
+              : `Starts with “${(lexeme.senses[0] ?? "")[0] ?? ""}” · ${lexeme.pos}`}
+          </p>
         )}
       </div>
 
-      <label htmlFor="answer" className="muted small">Your answer</label>
-      <input id="answer" type="text" autoFocus autoComplete="off" value={value}
-        disabled={cueBroken}
-        onChange={(e) => setValue(e.target.value)} placeholder="Answer before revealing" />
-
-      <div className="row" style={{ marginTop: 10 }}>
+      <div className="answer-zone">
+        <label htmlFor="answer" className="muted small">
+          {wantsHanzi ? "Type the characters" : wantsPinyin ? "Pinyin, with tone marks or numbers (wo3)" : "Your answer in English"}
+        </label>
+        <input
+          id="answer" type="text" value={value} disabled={cueBroken}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={cueBroken ? "Unavailable" : "Answer from memory"}
+          autoFocus
+          autoComplete="off"
+          /* iOS would otherwise capitalise and "correct" pinyin into English. */
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="done"
+          lang={wantsHanzi ? "zh-Hans" : "en"}
+        />
         <button type="submit" className="primary" disabled={!canAnswer}>Answer</button>
+        <div className="row">
+          <button type="button" onClick={onSkip}>Skip</button>
+          {!cueBroken && (
+            <button type="button" onClick={() => setHints((h) => h + 1)} disabled={hints > 0}>
+              {hints > 0 ? "Hint shown" : "Hint"}
+            </button>
+          )}
+        </div>
+        <p className="muted small" style={{ textAlign: "center", margin: 0 }}>
+          {cueBroken
+            ? "Nothing is recorded for a task you could not hear."
+            : "Answering from memory counts for more than a hint."}
+        </p>
       </div>
-      <div className="row" style={{ marginTop: 8 }}>
-        {cueBroken
-          ? <button type="button" onClick={onSkip}>Skip this one</button>
-          : <button type="button" onClick={() => setHints((h) => h + 1)}>
-              Hint{hints > 0 ? ` (${hints})` : ""}
-            </button>}
-      </div>
-      <p className="muted small">
-        {cueBroken
-          ? "Nothing is recorded for a task you could not hear."
-          : "Answering from memory counts for more than a hint."}
-      </p>
     </form>
   );
 }
 
-/** RESULT — the kernel's answer and ONE useful explanation (p.27). */
-function Result({ result, task, expected, onNext }: {
-  result: SubmitResult; task: TaskContract; expected: string; onNext: () => void;
+/** RESULT — the kernel's answer and ONE useful explanation (spec p.27). */
+function Result({ result, task, expected, pack, position, total, onNext }: {
+  result: SubmitResult; task: TaskContract; expected: string; pack: SessionState["pack"];
+  position: number; total: number; onNext: () => void;
 }) {
   const [details, setDetails] = useState(false);
   const rating = result.envelope.ratingProposal;
   const passed = rating !== "again";
   const asked = result.decision === "ask_self_grade";
+  const lexeme: Lexeme | undefined = pack.lexemes.find((l) => String(l.id) === String(task.lexeme));
+  const accepted = splitAnswers(expected);
+  const last = position + 1 >= total;
 
   return (
-    <div className="fade">
-      <SkillChip skill={task.skill} />
-      <div className="card">
-        <h2 className={passed ? "ok" : "warn"}>
-          {asked ? "Not counted yet" : passed ? "Correct" : "Not yet"}
-        </h2>
-        <p style={{ marginBottom: 6 }}>
-          <span lang="zh-CN" style={{ fontSize: 24 }}>{task.cue}</span>
-        </p>
-        <p className="muted" style={{ margin: 0 }}>{expected}</p>
+    <div className="fade grow stack">
+      <div className="session-head">
+        <div className="pips" role="img" aria-label={`Task ${position + 1} of ${total}`}>
+          {Array.from({ length: total }, (_, i) => (
+            <span key={i} className={`pip${i <= position ? " done" : ""}`} />
+          ))}
+        </div>
+        <SkillChip skill={task.skill} />
       </div>
 
-      {/* Synthetic playback lives here, AFTER the answer, so it can never
-          become a listening cue or count as canonical pronunciation. */}
-      <div className="card">
-        <SyntheticAudioButton text={task.cue} />
-      </div>
+      <div className="grow stack" style={{ justifyContent: "center" }}>
+        <div className="card">
+          <div className="verdict">
+            <span className={`badge ${asked ? "ask" : passed ? "yes" : "no"}`} aria-hidden="true">
+              {asked ? "?" : passed ? "✓" : "✕"}
+            </span>
+            <h2 className={asked ? "" : passed ? "ok" : "warn"}>
+              {asked ? "Not counted yet" : passed ? "Correct" : "Not yet"}
+            </h2>
+          </div>
 
-      <div className="card">
-        <p style={{ margin: 0 }} className="small">
-          {asked
-            ? "That one needs your own judgement before it changes memory."
-            : passed
-              ? "Recorded. This trace will come back when it is about to fade."
-              : `Recorded. ${SKILL_LABEL[task.skill]} for this word will come back shortly to repair.`}
-        </p>
-        <button type="button" style={{ marginTop: 10 }} onClick={() => setDetails((d) => !d)} aria-expanded={details}>
-          {details ? "Hide details" : "Why?"}
-        </button>
-        {details && (
-          <ul className="muted small" style={{ marginBottom: 0 }}>
-            <li>Skill trained: {SKILL_LABEL[task.skill]} (this word's other skills are unchanged)</li>
-            <li>Evidence strength: {result.envelope.evidenceStrength.toFixed(2)}</li>
-            <li>Confidence: {result.envelope.confidence}</li>
-            {result.envelope.reasonCodes.map((r) => <li key={r.code}>{r.code}: {r.detail}</li>)}
-            {result.repair && <li>Repair scheduled for this trace</li>}
-          </ul>
+          {lexeme && (
+            <>
+              <p className="answer-reveal" lang="zh-Hans" style={{ marginBottom: 2 }}>{lexeme.simplified}</p>
+              <p className="pinyin" style={{ marginBottom: 10 }}>{lexeme.pinyin}</p>
+            </>
+          )}
+          <p className="gloss">{accepted[0]}</p>
+          {accepted.length > 1 && (
+            <p className="muted small" style={{ marginTop: 4, marginBottom: 0 }}>
+              Also accepted: {accepted.slice(1).join(", ")}
+            </p>
+          )}
+        </div>
+
+        {/* Synthetic playback lives here, AFTER the answer, so it can never
+            become a listening cue or count as canonical pronunciation. */}
+        {lexeme && SPEECH_AVAILABLE && (
+          <div className="card">
+            <SyntheticAudioButton text={lexeme.simplified} />
+          </div>
         )}
+
+        <div className="card">
+          <p className="small" style={{ marginBottom: 10 }}>
+            {asked
+              ? "That one needs your own judgement before it changes memory."
+              : passed
+                ? "Recorded. This trace will come back just before it fades."
+                : `Recorded. ${SKILL_LABEL[task.skill]} for this word will come back shortly to repair.`}
+          </p>
+          <button type="button" onClick={() => setDetails((d) => !d)} aria-expanded={details}>
+            {details ? "Hide details" : "Why?"}
+          </button>
+          {details && (
+            <dl className="facts" style={{ marginTop: 12 }}>
+              <dt>Skill trained</dt>
+              <dd>{SKILL_LABEL[task.skill]} only</dd>
+              <dt>Evidence</dt>
+              <dd>{result.envelope.evidenceStrength.toFixed(2)}</dd>
+              <dt>Confidence</dt>
+              <dd>{result.envelope.confidence}</dd>
+              {result.envelope.reasonCodes.map((r) => (
+                <div key={r.code} style={{ display: "contents" }}>
+                  <dt>{r.code.replace(/_/g, " ")}</dt>
+                  <dd>{r.detail}</dd>
+                </div>
+              ))}
+              {result.repair && (<><dt>Repair</dt><dd>scheduled for this trace</dd></>)}
+            </dl>
+          )}
+        </div>
       </div>
 
-      <button className="primary" onClick={onNext}>Next</button>
+      <button className="primary" onClick={onNext} autoFocus>
+        {last ? "Finish session" : "Next"}
+      </button>
     </div>
   );
 }
@@ -305,13 +425,19 @@ function Progress({ state }: { state: SessionState }) {
   const profile = state.kernel.frontier.profile();
   const weakest = state.kernel.frontier.weakestSkill();
   const workload = state.kernel.workload();
+  const anything = SKILLS.some((s) => profile[s].total > 0);
 
   return (
-    <div className="fade">
-      <h1>Progress</h1>
-      <p className="muted small">
-        Listening, reading, speaking and writing are tracked separately. There is no single score.
-      </p>
+    <div className="fade stack">
+      <header>
+        <p className="eyebrow">Four channels</p>
+        <h1>Progress</h1>
+        <p className="muted small" style={{ marginBottom: 0 }}>
+          Listening, reading, speaking and writing are tracked separately. There is no single score,
+          because knowing a word by sight does not mean you can hear it.
+        </p>
+      </header>
+
       <div className="card">
         {SKILLS.map((skill) => {
           const p = profile[skill];
@@ -320,29 +446,37 @@ function Progress({ state }: { state: SessionState }) {
             <div className="meter" key={skill}>
               <div className="meter-head">
                 <SkillChip skill={skill} />
-                <span className="small">{p.retained} / {p.total}</span>
+                <span className="count">{p.retained} / {p.total || 60}</span>
               </div>
-              <div className="track" role="img" aria-label={`${SKILL_LABEL[skill]}: ${p.retained} of ${p.total} retained`}>
+              <div className="track" role="img"
+                aria-label={`${SKILL_LABEL[skill]}: ${p.retained} of ${p.total || 60} retained`}>
                 <div className="fill" style={{ width: `${pct}%`, background: `var(--${skill})` }} />
               </div>
             </div>
           );
         })}
       </div>
+
       <div className="card">
         <h2>Workload</h2>
-        <p className="muted small" style={{ margin: 0 }}>
-          {SKILL_LABEL[weakest]} is the weakest channel and gets repair priority.
-          {workload.freezeIntroductions ? " New items are paused while repair catches up." : " New items are welcome."}
+        <p className="muted small" style={{ marginBottom: 0 }}>
+          {anything
+            ? `${SKILL_LABEL[weakest]} is the weakest channel and gets repair priority.`
+            : "Nothing tracked yet — your first session opens the reading channel."}
+          {workload.freezeIntroductions ? " New words are paused while repair catches up." : " New words are welcome."}
         </p>
       </div>
     </div>
   );
 }
 
-/** SETTINGS — privacy, export and deletion controls (p.28 plain-slice done). */
+/** SETTINGS — privacy, export and deletion controls (spec p.28 plain-slice done). */
 function Settings({ state }: { state: SessionState }) {
   const [msg, setMsg] = useState<string | null>(null);
+  const canonical = state.pack.lexemes.filter((l) => {
+    const a = state.pack.audio.get(String(l.id));
+    return a?.state === "verified";
+  }).length;
 
   const onExport = async () => {
     const json = await exportLearningData(state.kernel);
@@ -360,37 +494,54 @@ function Settings({ state }: { state: SessionState }) {
   };
 
   return (
-    <div className="fade">
-      <h1>Settings</h1>
+    <div className="fade stack">
+      <header>
+        <p className="eyebrow">Yours</p>
+        <h1>Settings</h1>
+      </header>
+
       <div className="card">
         <h2>Your data</h2>
         <p className="muted small">
-          Everything stays on this device. The learning log is yours to export or delete.
+          Everything stays on this device. Nothing is uploaded. The learning log is yours to export
+          or delete at any time.
         </p>
         <div className="row">
-          <button onClick={onExport}>Export learning log</button>
-          <button onClick={onDelete}>Delete all data</button>
+          <button onClick={onExport}>Export log</button>
+          <button onClick={onDelete}>Delete all</button>
         </div>
-        {msg && <p className="small ok" role="status">{msg}</p>}
+        {msg && <p className="small ok" role="status" style={{ marginTop: 10, marginBottom: 0 }}>{msg}</p>}
       </div>
+
       <div className="card">
         <h2>Content</h2>
-        <p className="muted small" style={{ marginBottom: 6 }}>
-          Pack {state.pack.packId} · {state.pack.lexemes.length} words
-        </p>
-        <p className="muted small" style={{ margin: 0 }}>
-          Version {String(state.pack.packVersion)}
-        </p>
-        <details style={{ marginTop: 10 }}>
+        <dl className="facts">
+          <dt>Pack</dt><dd>{state.pack.packId}</dd>
+          <dt>Words</dt><dd>{state.pack.lexemes.length}</dd>
+          <dt>Version</dt><dd style={{ wordBreak: "break-all" }}>{String(state.pack.packVersion)}</dd>
+          <dt>Recordings</dt><dd>{canonical} / {state.pack.lexemes.length}</dd>
+        </dl>
+        {canonical < state.pack.lexemes.length && (
+          <p className="muted small" style={{ marginTop: 12, marginBottom: 0 }}>
+            Listening needs human-recorded Mandarin, which cannot be synthesised. Until a licensed
+            recording is verified for a word, listening tasks for it are not issued — you will not be
+            taught pronunciation from audio that does not exist. Reading and writing work fully.
+          </p>
+        )}
+        <details style={{ marginTop: 12 }}>
           <summary className="small">Attribution</summary>
-          <p className="muted small">{state.pack.attributions[0]?.attributionText} — {state.pack.attributions.length} entries.</p>
+          <p className="muted small" style={{ marginTop: 8, marginBottom: 0 }}>
+            {state.pack.attributions[0]?.attributionText} — {state.pack.attributions.length} entries,
+            each with its licence and content hash.
+          </p>
         </details>
       </div>
+
       <div className="card">
         <h2>Accessibility</h2>
-        <p className="muted small" style={{ margin: 0 }}>
-          Reduced motion follows your system setting. Colour is never the only signal —
-          every skill is named in text.
+        <p className="muted small" style={{ marginBottom: 0 }}>
+          Reduced motion follows your system setting, and so does light or dark. Colour is never the
+          only signal — every skill is named in text beside its dot.
         </p>
       </div>
     </div>
@@ -404,4 +555,15 @@ function SkillChip({ skill }: { skill: Skill }) {
       {SKILL_LABEL[skill]}
     </span>
   );
+}
+
+function NavIcon({ screen }: { screen: Screen }) {
+  const common = { className: "icon", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+  if (screen === "progress") {
+    return <svg {...common}><path d="M4 19V10M10 19V5M16 19v-6M22 19H2" /></svg>;
+  }
+  if (screen === "settings") {
+    return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" /></svg>;
+  }
+  return <svg {...common}><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V21h13V9.5" /></svg>;
 }

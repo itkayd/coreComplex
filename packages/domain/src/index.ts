@@ -11,6 +11,7 @@ export * from "./ids.ts";
 export * from "./skills.ts";
 export * from "./clock.ts";
 export * from "./graph.ts";
+export * from "./pinyin.ts";
 export * from "./traces.ts";
 export * from "./contracts.ts";
 export * from "./assets.ts";

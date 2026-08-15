@@ -1,137 +1,382 @@
 /*
- * Permanent visual identity (spec p.21). Brain tokens and the four permanent
- * skill-channel colours are fixed; level hue shows curriculum position, skill
- * colour shows modality, and neither is ever used as a mastery verdict.
+ * Dyr Mandarin Lab — the plain body.
  *
- * Accessibility (spec p.27): WCAG AA contrast, keyboard navigation, large
- * targets, reduced motion respected, and colour never carries meaning alone —
- * every skill is also named in text.
+ * DESIGN PLAN
+ *
+ * Colour. The four skill hues are permanent identity (spec p.21) and are not
+ * design freedom: listening pink, reading blue, writing lime, speaking cyan.
+ * Everything else is built around them — neutrals carry a slight blue bias
+ * toward the reading hue so the greys read as chosen rather than inherited.
+ * Each hue exists twice: a solid `--x` for marks (dots, meter fills, the play
+ * button) and an `--x-ink` tuned per theme for text, because lime at AA on
+ * white is a different colour from lime at AA on near-black. Colour never
+ * carries meaning alone — every skill is named in text beside its dot.
+ *
+ * Type. A system stack, deliberately: this is an offline-first PWA that must
+ * render instantly with no network, feel native on iOS and Android, and set
+ * Chinese correctly — which needs the platform's own CJK face (PingFang,
+ * Hiragino, Noto). Personality comes from scale, weight and spacing instead of
+ * a downloaded face. Hanzi get their own stack, size and tracking; digits that
+ * line up in columns get tabular numerals.
+ *
+ * Layout. One column, thumb-first. A session fills the viewport with the cue in
+ * the upper half and the answer controls in the lower third where a thumb
+ * actually reaches. Everything respects the iOS safe area, which the fixed
+ * bottom nav would otherwise sit underneath.
+ *
+ * Accessibility (spec p.27): WCAG AA contrast, visible focus, 48px targets,
+ * reduced motion respected.
  */
+
+/* ---- Tokens: light is the base, dark overrides at token level only ------- */
 :root {
-  --bg: #090d16;
-  --surface: #141b2d;
-  --inactive: #354057;
-  --text: #f4f7fb;
-  --muted: #8d98aa;
+  --ground: #f6f8fc;
+  --surface: #ffffff;
+  --raised: #eef2f9;
+  --line: #dde4f0;
+  --line-strong: #c3cee0;
+  --text: #0f1725;
+  --muted: #5b667c;
+
+  --listening: #d81b74;
+  --reading: #1668c9;
+  --writing: #4f7a08;
+  --speaking: #0f7f8c;
+  --listening-ink: #b01560;
+  --reading-ink: #14559f;
+  --writing-ink: #3f6206;
+  --speaking-ink: #0c6570;
+  --on-accent: #ffffff;
+
+  --tint: 0.10;
+  --shadow: 0 1px 2px rgba(15, 23, 37, 0.06), 0 8px 24px -12px rgba(15, 23, 37, 0.18);
+
+  --radius: 16px;
+  --radius-sm: 11px;
+  --tap: 48px;
+
+  --step-0: 1rem;
+  --step-1: 1.0625rem;
+  --step-2: 1.3125rem;
+  --step-3: 1.75rem;
+  --gap: 12px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #080c14;
+    --surface: #121a29;
+    --raised: #1a2436;
+    --line: #26314a;
+    --line-strong: #3a4763;
+    --text: #f1f5fb;
+    --muted: #97a3b8;
+
+    --listening: #ff5da2;
+    --reading: #4ea8ff;
+    --writing: #b8e65c;
+    --speaking: #28c7d9;
+    --listening-ink: #ff86ba;
+    --reading-ink: #7cc0ff;
+    --writing-ink: #c8ef77;
+    --speaking-ink: #56dbea;
+    --on-accent: #061020;
+
+    --tint: 0.16;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 30px -14px rgba(0, 0, 0, 0.8);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #080c14;
+  --surface: #121a29;
+  --raised: #1a2436;
+  --line: #26314a;
+  --line-strong: #3a4763;
+  --text: #f1f5fb;
+  --muted: #97a3b8;
 
   --listening: #ff5da2;
   --reading: #4ea8ff;
   --writing: #b8e65c;
   --speaking: #28c7d9;
+  --listening-ink: #ff86ba;
+  --reading-ink: #7cc0ff;
+  --writing-ink: #c8ef77;
+  --speaking-ink: #56dbea;
+  --on-accent: #061020;
 
-  --radius: 14px;
-  --tap: 48px; /* large, stable targets */
+  --tint: 0.16;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 30px -14px rgba(0, 0, 0, 0.8);
+
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 
-html, body, #root { height: 100%; }
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
 
 body {
+  min-height: 100%;
   margin: 0;
-  background: var(--bg);
+  background: var(--ground);
   color: var(--text);
-  font: 16px/1.5 ui-sans-serif, system-ui, "Noto Sans SC", "PingFang SC", sans-serif;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+  font-size: var(--step-0);
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  /* Stop pull-to-refresh yanking the page away mid-answer. */
+  overscroll-behavior-y: contain;
 }
+
+#root { min-height: 100%; }
+
+/* ---- Shell -------------------------------------------------------------- */
 
 .app {
-  max-width: 560px;
+  max-width: 34rem;
   margin: 0 auto;
-  padding: 20px 18px 96px;
+  padding:
+    calc(20px + env(safe-area-inset-top)) max(18px, env(safe-area-inset-left))
+    calc(104px + env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-right));
 }
 
-h1, h2, h3 { line-height: 1.2; margin: 0 0 12px; }
-h1 { font-size: 26px; letter-spacing: -0.01em; }
-h2 { font-size: 19px; }
+/* A session takes over the screen: no nav, controls in the thumb zone. */
+.app.is-session {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+h1, h2, h3 { line-height: 1.15; margin: 0 0 0.5rem; text-wrap: balance; }
+h1 { font-size: var(--step-3); letter-spacing: -0.021em; font-weight: 660; }
+h2 { font-size: var(--step-2); letter-spacing: -0.012em; font-weight: 640; }
+p { margin: 0 0 0.75rem; }
+p:last-child { margin-bottom: 0; }
 
 .muted { color: var(--muted); }
-.small { font-size: 14px; }
+.small { font-size: 0.875rem; line-height: 1.5; }
+.stack { display: flex; flex-direction: column; gap: var(--gap); }
+.grow { flex: 1 1 auto; }
+
+.eyebrow {
+  font-size: 0.75rem;
+  font-weight: 640;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
 .card {
   background: var(--surface);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 12px;
+  padding: 1rem;
+  box-shadow: var(--shadow);
 }
 
-/* Primary action: Home has exactly one (spec p.14 reduce start friction). */
+/* ---- Controls ----------------------------------------------------------- */
+
 button {
   font: inherit;
+  font-weight: 560;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--inactive);
-  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
   min-height: var(--tap);
-  padding: 12px 16px;
+  padding: 0.75rem 1rem;
   cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 60ms ease;
 }
-button:hover:not(:disabled) { border-color: var(--muted); }
+button:hover:not(:disabled) { background: var(--raised); }
+button:active:not(:disabled) { transform: scale(0.985); }
 button:focus-visible { outline: 3px solid var(--reading); outline-offset: 2px; }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .primary {
   width: 100%;
   background: var(--reading);
   border-color: var(--reading);
-  color: #06121f;
-  font-weight: 650;
-  font-size: 17px;
-  min-height: 56px;
+  color: var(--on-accent);
+  font-weight: 660;
+  font-size: var(--step-1);
+  min-height: 54px;
 }
+.primary:hover:not(:disabled) { background: var(--reading-ink); border-color: var(--reading-ink); }
 
-.row { display: flex; gap: 8px; flex-wrap: wrap; }
-.row > * { flex: 1 1 auto; }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1 1 0; min-width: 0; }
 
 input[type="text"] {
   width: 100%;
   font: inherit;
+  /* 16px minimum, or iOS zooms the whole page on focus. */
+  font-size: max(16px, var(--step-1));
   color: var(--text);
-  background: #0d1422;
-  border: 1px solid var(--inactive);
-  border-radius: 10px;
-  min-height: var(--tap);
-  padding: 12px 14px;
+  background: var(--raised);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  min-height: 54px;
+  padding: 0.75rem 0.875rem;
 }
-input:focus-visible { outline: 3px solid var(--reading); outline-offset: 2px; }
+input[type="text"]::placeholder { color: var(--muted); opacity: 0.85; }
+input[type="text"]:focus-visible { outline: 3px solid var(--reading); outline-offset: 2px; border-color: var(--reading); }
+input[type="text"]:disabled { opacity: 0.55; }
 
-/* Skill chips: colour PLUS a text label, never colour alone. */
+/* ---- Skill identity: colour PLUS a name, never colour alone ------------- */
+
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 10px;
+  gap: 7px;
+  font-size: 0.8125rem;
+  font-weight: 640;
+  letter-spacing: 0.01em;
+  padding: 5px 11px 5px 9px;
   border-radius: 999px;
-  border: 1px solid currentColor;
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  background: color-mix(in srgb, currentColor var(--tint), transparent);
 }
-.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.s-listening { color: var(--listening); }
-.s-reading { color: var(--reading); }
-.s-writing { color: var(--writing); }
-.s-speaking { color: var(--speaking); }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.s-listening { color: var(--listening-ink); }
+.s-reading { color: var(--reading-ink); }
+.s-writing { color: var(--writing-ink); }
+.s-speaking { color: var(--speaking-ink); }
+
+/* ---- Session ------------------------------------------------------------ */
+
+.session-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+}
+.session-head .chip { margin-left: auto; }
+
+/* One pip per task: position without a number to count against. */
+.pips { display: flex; gap: 5px; flex: none; }
+.pip { width: 22px; height: 4px; border-radius: 2px; background: var(--line-strong); }
+.pip.done { background: var(--muted); }
+.pip.now { background: var(--reading); }
+
+.cue-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem 0;
+  text-align: center;
+}
 
 .cue {
-  font-size: 44px;
-  text-align: center;
-  padding: 22px 10px;
-  letter-spacing: 0.04em;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", ui-sans-serif, sans-serif;
+  font-size: clamp(3.5rem, 22vw, 5.5rem);
+  line-height: 1.1;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+.cue-en {
+  font-size: var(--step-3);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  max-width: 18ch;
 }
 
-/* Four independent skill meters — never summed into one number. */
-.meter { margin-bottom: 14px; }
-.meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
-.track { height: 10px; background: var(--inactive); border-radius: 999px; overflow: hidden; }
-.fill { height: 100%; border-radius: 999px; }
+.answer-zone { display: flex; flex-direction: column; gap: 10px; flex: none; }
+
+/* ---- Canonical listening cue -------------------------------------------
+   The label is generic text so a screen reader never announces the answer. */
+.cue-audio { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.audio-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: var(--step-1);
+  font-weight: 640;
+  padding: 1rem 1.75rem;
+  min-height: 60px;
+  min-width: 11rem;
+  background: var(--listening);
+  border-color: var(--listening);
+  color: var(--on-accent);
+  border-radius: 999px;
+}
+.audio-play:hover:not(:disabled) { background: var(--listening-ink); border-color: var(--listening-ink); }
+.audio-play .glyph { font-size: 1.125rem; line-height: 1; }
+
+/* ---- Progress: four independent meters, never one score ----------------- */
+
+.meter + .meter { margin-top: 1rem; }
+.meter-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
+.meter-head .count { font-size: 0.875rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.track { height: 8px; background: var(--raised); border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
+.fill { height: 100%; border-radius: 999px; transition: width 320ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* ---- Notices ------------------------------------------------------------ */
+
+.banner {
+  display: flex;
+  gap: 10px;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--listening-ink) 30%, var(--line));
+  background: color-mix(in srgb, var(--listening) var(--tint), var(--surface));
+}
+.banner .mark { color: var(--listening-ink); font-weight: 700; flex: none; }
+
+.ok { color: var(--writing-ink); }
+.warn { color: var(--listening-ink); }
+
+.verdict { display: flex; align-items: center; gap: 10px; margin-bottom: 0.5rem; }
+.verdict h2 { margin: 0; }
+.badge {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 0.9rem; font-weight: 700; flex: none;
+  color: var(--on-accent);
+}
+.badge.yes { background: var(--writing); }
+.badge.no { background: var(--listening); }
+.badge.ask { background: var(--speaking); }
+
+.answer-reveal {
+  font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", ui-sans-serif, sans-serif;
+  font-size: 2.25rem;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+.pinyin { color: var(--muted); font-size: var(--step-1); letter-spacing: 0.02em; }
+
+dl.facts { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 0.875rem; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ---- Bottom navigation -------------------------------------------------- */
 
 .nav {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   display: flex;
-  background: var(--surface);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: saturate(1.6) blur(12px);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
 }
 .nav button {
   flex: 1;
@@ -139,35 +384,50 @@ input:focus-visible { outline: 3px solid var(--reading); outline-offset: 2px; }
   border-radius: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 4px;
 }
-.nav button[aria-current="page"] { color: var(--text); box-shadow: inset 0 2px 0 var(--reading); }
+.nav button:hover:not(:disabled) { background: transparent; color: var(--text); }
+.nav button .icon { width: 22px; height: 22px; display: block; }
+.nav button[aria-current="page"] { color: var(--reading-ink); }
 
-.banner {
-  border-left: 3px solid var(--listening);
-  padding: 10px 12px;
-  background: rgba(255, 93, 162, 0.08);
-  border-radius: 0 10px 10px 0;
-  margin-bottom: 12px;
-}
+/* ---- Motion is explanatory and optional (spec p.28) --------------------- */
 
-.ok { color: var(--writing); }
-.warn { color: var(--listening); }
-
-/* Motion is explanatory and optional (spec p.28 MOTION). */
-.fade { animation: fade 180ms ease-out; }
-@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.fade { animation: fade 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* Canonical listening cue. Sized as a comfortable touch target; the label is
-   generic text so a screen reader never announces the answer. */
-.cue-audio { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
-.audio-play {
-  display: inline-flex; align-items: center; gap: 10px;
-  font-size: 18px; padding: 14px 22px; min-height: 48px;
-  background: var(--listening); color: #06121b; border: none; font-weight: 600;
+/* Home's four-channel snapshot: four counts side by side, never summed. */
+.channels {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
 }
-.audio-play:disabled { opacity: 0.55; }
+.channels li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, currentColor var(--tint), transparent);
+}
+.channels .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.channels .name { font-size: 0.6875rem; font-weight: 640; letter-spacing: 0.02em; }
+.channels .count { font-size: 1.25rem; font-weight: 680; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* The meaning is the answer, so it carries the weight; hanzi is context. */
+.gloss { font-size: var(--step-2); font-weight: 620; margin: 0; }

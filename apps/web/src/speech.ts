@@ -16,9 +16,26 @@
 
 const SPEECH_CACHE = "dyr-speech-v1";
 
-/** Base URL of the local service. Configurable, never a hardcoded cloud host. */
+/**
+ * Base URL of the local service. Configurable, never a hardcoded cloud host.
+ *
+ * The default only applies when the app is itself served locally. A build
+ * deployed to a real origin has no business reaching for 127.0.0.1: that is the
+ * VIEWER's machine, not the developer's, the request is mixed content over
+ * HTTPS and would be blocked anyway, and the result would be a button that can
+ * only ever fail. Where no service is configured, `SPEECH_AVAILABLE` is false
+ * and the control is not rendered at all — better than offering an action the
+ * app knows cannot work.
+ */
+const CONFIGURED_SPEECH_URL = import.meta.env.VITE_DYR_SPEECH_URL as string | undefined;
+const servedLocally = typeof location !== "undefined"
+  && (location.hostname === "localhost" || location.hostname === "127.0.0.1");
+
 export const SPEECH_SERVICE_URL: string =
-  (import.meta.env.VITE_DYR_SPEECH_URL as string | undefined) ?? "http://127.0.0.1:8730";
+  CONFIGURED_SPEECH_URL ?? (servedLocally ? "http://127.0.0.1:8730" : "");
+
+/** Whether a synthetic-speech service is configured for this build at all. */
+export const SPEECH_AVAILABLE: boolean = SPEECH_SERVICE_URL.length > 0;
 
 export interface SyntheticClip {
   audioId: string;

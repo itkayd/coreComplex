@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Dyr Mandarin Lab">
+  <rect width="512" height="512" rx="112" fill="#080C14"/>
+  <g fill="none" stroke-width="28" stroke-linecap="round" transform="rotate(-90 256 256)">
+    <circle cx="256" cy="256" r="160" stroke="#FF5DA2" stroke-dasharray="201.1 804.2" stroke-dashoffset="-25.1"/>  <!-- listening -->
+    <circle cx="256" cy="256" r="160" stroke="#4EA8FF" stroke-dasharray="201.1 804.2" stroke-dashoffset="-276.5"/>  <!-- reading -->
+    <circle cx="256" cy="256" r="160" stroke="#B8E65C" stroke-dasharray="201.1 804.2" stroke-dashoffset="-527.8"/>  <!-- writing -->
+    <circle cx="256" cy="256" r="160" stroke="#28C7D9" stroke-dasharray="201.1 804.2" stroke-dashoffset="-779.1"/>  <!-- speaking -->
+  </g>
+  <text x="256" y="308" font-size="176" font-weight="600" text-anchor="middle"
+        font-family="PingFang SC, Hiragino Sans GB, Noto Sans SC, sans-serif" fill="#F1F5FB">语</text>
+</svg>

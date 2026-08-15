@@ -83,7 +83,7 @@ async function run() {
   await audit(page, "home");
 
   // --- bounded sessions: 3 / 7 / 15 minutes all plan and stay bounded ---
-  for (const [label, name] of [["3", /3 min rescue/], ["7", /Start 7 minutes/], ["15", /15 min core/]]) {
+  for (const [label, name] of [["3", /^3 min$/], ["7", /Start 7 minutes/], ["15", /^15 min$/]]) {
     await page.goto(BASE, { waitUntil: "networkidle" });
     await page.getByRole("button", { name }).click();
     const started = await page.$("#answer");
