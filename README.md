@@ -230,16 +230,16 @@ speech can never satisfy this gate and appears only after an answer.
 **Hearing a word, which is a different thing.** Beside that gate sits a plain
 convenience: on any screen where the word is *already visible* — the Words list,
 the Result screen, Settings — "Hear it" reads it aloud in a **generated** voice,
-always labelled as such. Three tiers serve it, and `pronounce()` walks them in order: the local
-CosyVoice service when it is configured *and reachable*, then the device's own
-`speechSynthesis` voice (free and offline on every phone), then a cloud TTS
-proxied through same-origin `/api/speech` for the device that has neither.
-Quality, then offline, then cost — putting the cloud tier higher would spend a
-request on devices with a perfectly good voice sitting idle. Where nothing can
-speak, the control is not rendered and Settings says why. The cloud tier is off
-unless configured and has no default provider: a default would have to be either
-a metered service (refused by hostname) or an undocumented free endpoint whose
-terms forbid it. See `docs/PRONUNCIATION.md`. The device
+always labelled as such. Three tiers serve it, and `pronounce()` walks them in order: the local CosyVoice
+service when it is configured *and reachable*, then the device's own
+`speechSynthesis` voice (free and offline on almost every phone), then Cloudflare
+Workers AI running `@cf/myshell-ai/melotts`, proxied through same-origin
+`/api/tts`. Reliability, then latency, then offline, then cost — a networked
+provider ahead of a local one would make the common case fragile to improve the
+rare one. Readiness is not configuration and readiness is not enough: a provider
+that probes true and then fails at playback falls through to the next, on a
+forward-only walk that cannot loop. Where nothing can speak, the control is not
+rendered and Settings says why. See ADR 0013. The device
 voice is chosen deliberately, not left to the platform: Cantonese is refused
 outright rather than ranked last (a Cantonese reading of a Mandarin word is a
 wrong answer said confidently), mainland Mandarin beats Taiwan, and on-device

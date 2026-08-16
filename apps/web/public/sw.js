@@ -17,6 +17,14 @@
  */
 const CACHE = "dyr-shell-v1";
 const PACK_PREFIX = "dyr-pack-";
+/**
+ * Generated pronunciation clips, keyed by content hash (see cloud-voice.ts).
+ *
+ * Listed here because activation deletes every cache it does not recognise —
+ * without this the TTS cache would be dropped on every worker update and the
+ * caching would quietly do nothing.
+ */
+const TTS_CACHE = "dyr-tts-v1";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -28,7 +36,7 @@ self.addEventListener("activate", (event) => {
       Promise.all(
         keys
           // Pack caches survive activation; they are evicted by version instead.
-          .filter((k) => k !== CACHE && !k.startsWith(PACK_PREFIX))
+          .filter((k) => k !== CACHE && k !== TTS_CACHE && !k.startsWith(PACK_PREFIX))
           .map((k) => caches.delete(k)),
       ),
     ).then(() => self.clients.claim()),
@@ -61,6 +69,18 @@ self.addEventListener("message", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
+
+  /*
+   * NEVER cache the API.
+   *
+   * The handler below is cache-first and stores every same-origin GET, which is
+   * right for an immutable shell and wrong for everything under /api/. It was
+   * storing the account status, so a sign-out could be undone by a cached
+   * `authenticated: true`, and the backup health check could report a database
+   * that had since gone away. Those responses are all `no-store`; this is what
+   * makes the worker honour it.
+   */
+  if (new URL(req.url).pathname.includes("/api/")) return;
   event.respondWith(
     // `caches.match` without a cache name searches every cache, so a recording
     // installed into the pack cache is served offline exactly like the shell.

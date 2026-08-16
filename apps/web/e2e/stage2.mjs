@@ -169,30 +169,115 @@ async function audioGate(browser) {
     check("audio: a Cantonese-only device is offered NOTHING", offered === null);
   });
 
-  // --- the fourth tier: no device voice, but the server can generate audio ---
-  // This is the whole reason the cloud tier exists, so it is checked where it
-  // actually matters: a device that genuinely cannot speak, which must still get
-  // sound rather than a disabled button.
+  // --- tier 3: no device voice at all, but Cloudflare MeloTTS can speak ---
+  //
+  // The whole reason the cloud tier exists, checked where it matters: a device
+  // that genuinely cannot speak must still get sound rather than a dead button.
+  // `/api/tts` is stubbed — CI must never call the real Workers AI endpoint or
+  // consume its quota, and a test that depends on someone else's uptime reports
+  // on their day rather than on this code.
   {
     // serviceWorkers: "block" — a registered SW answers fetches itself and never
     // reaches context.route(), so the stub below would simply never be used.
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
     await context.addInitScript(() => {
+      window.__ttsErrors = [];
+      window.addEventListener("unhandledrejection", (e) => window.__ttsErrors.push(String(e.reason)));
       Object.defineProperty(window, "speechSynthesis", {
         configurable: true,
         value: { getVoices: () => [], speak() {}, cancel() {}, addEventListener() {}, removeEventListener() {} },
       });
     });
-    let asked = 0;
-    await context.route("**/api/speech**", async (route) => {
-      const url = new URL(route.request().url());
-      if (url.searchParams.get("action") === "health") {
-        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, configured: true, mediaType: "audio/mpeg" }) });
+
+    const asked = [];
+    await context.route("**/api/tts**", async (route) => {
+      const request = route.request();
+      if (request.method() === "GET") {
+        return route.fulfill({
+          status: 200, contentType: "application/json",
+          body: JSON.stringify({ ok: true, configured: true, model: "@cf/myshell-ai/melotts" }),
+        });
       }
-      asked += 1;
-      // A minimal silent MP3 frame: enough for the element to load and end.
-      return route.fulfill({ status: 200, contentType: "audio/mpeg", body: Buffer.from("fffb90c40000000000", "hex") });
+      asked.push(JSON.parse(request.postData() ?? "{}"));
+      // A silent MP3 frame: enough for the element to load, play and end.
+      return route.fulfill({
+        status: 200, contentType: "audio/mpeg",
+        body: Buffer.from("fffb90c40000000000000000000000000000", "hex"),
+      });
     });
+
+    const page = await context.newPage();
+    await page.goto(BASE, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Words" }).click();
+    await page.waitForSelector(".hsk-bar", { timeout: 15_000 });
+    const show = await page.$('button:has-text("Show ")');
+    if (show) await show.click();
+
+    const button = await page.waitForSelector(".pronounce-compact", { timeout: 10_000 }).catch(() => null);
+    check("audio: a device with NO voice still gets audio from Cloudflare MeloTTS", Boolean(button));
+
+    if (button) {
+      const word = await button.evaluate((el) => el.closest(".word")?.querySelector(".hanzi")?.textContent ?? "");
+      await button.click();
+      await page.waitForFunction(() => true, null, { timeout: 500 }).catch(() => {});
+      await page.waitForTimeout(900);
+
+      check("audio: MeloTTS is asked for the correct Mandarin text",
+        asked.length > 0 && asked[0].text === word, `asked=${JSON.stringify(asked[0] ?? null)} word=${word}`);
+      check("audio: and a valid speed is sent with it",
+        asked.length > 0 && typeof asked[0].speed === "number" && asked[0].speed >= 0.5 && asked[0].speed <= 2,
+        `speed=${asked[0]?.speed}`);
+
+      // SCENARIO I, in the real browser: the same word twice must not regenerate.
+      await button.click();
+      await page.waitForTimeout(700);
+      check("audio: a repeated word is served from cache, not regenerated",
+        asked.length === 1, `generations=${asked.length}`);
+
+      check("audio: the control stays usable after cloud playback",
+        await button.isEnabled());
+    }
+
+    // Nothing about a pronunciation may become learning evidence: this screen
+    // issues no task, so the log must still be empty.
+    const events = await page.evaluate(async () => {
+      const open = indexedDB.open("dyr");
+      return await new Promise((resolve) => {
+        open.onsuccess = () => {
+          const db = open.result;
+          if (!db.objectStoreNames.contains("events")) return resolve(0);
+          const tx = db.transaction("events", "readonly").objectStore("events").count();
+          tx.onsuccess = () => resolve(tx.result);
+          tx.onerror = () => resolve(-1);
+        };
+        open.onerror = () => resolve(0);
+      });
+    }).catch(() => 0);
+    check("audio: pressing play writes NO learning event", events === 0, `events=${events}`);
+
+    const errors = await page.evaluate(() => window.__ttsErrors ?? []);
+    check("audio: no unhandled rejection on the cloud path", errors.length === 0, errors.slice(0, 2).join(" | "));
+
+    await context.close();
+  }
+
+  // --- the cloud tier fails at runtime: the UI must stay honest and usable ---
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
+    await context.addInitScript(() => {
+      window.__ttsErrors = [];
+      window.addEventListener("unhandledrejection", (e) => window.__ttsErrors.push(String(e.reason)));
+      Object.defineProperty(window, "speechSynthesis", {
+        configurable: true,
+        value: { getVoices: () => [], speak() {}, cancel() {}, addEventListener() {}, removeEventListener() {} },
+      });
+    });
+    await context.route("**/api/tts**", (route) =>
+      route.request().method() === "GET"
+        ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, configured: true }) })
+        // SCENARIO G in the browser: the upstream is broken.
+        : route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ ok: false, error: "speech could not be generated" }) }));
+
     const page = await context.newPage();
     await page.goto(BASE, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "Words" }).click();
@@ -200,15 +285,18 @@ async function audioGate(browser) {
     const show = await page.$('button:has-text("Show ")');
     if (show) await show.click();
     const button = await page.waitForSelector(".pronounce-compact", { timeout: 10_000 }).catch(() => null);
-    check("audio: a device with NO voice still gets audio when the server can generate it", Boolean(button));
     if (button) {
-      const expected = await button.evaluate((el) => el.closest(".word")?.querySelector(".hanzi")?.textContent ?? "");
       await button.click();
-      await page.waitForFunction(() => true, null, { timeout: 1000 }).catch(() => {});
-      await page.waitForTimeout(700);
-      check("audio: the cloud tier is actually asked for that word", asked > 0, `requests=${asked}`);
-      check("audio: and the word it asks for is the one beside the button",
-        expected.length > 0, `word=${expected}`);
+      await page.waitForTimeout(900);
+      const state = await button.getAttribute("data-audio-state");
+      check("audio: a failing cloud tier leaves a reported state, not a spinner",
+        state !== "loading", `state=${state}`);
+      const errors = await page.evaluate(() => window.__ttsErrors ?? []);
+      check("audio: a failing cloud tier raises no unhandled rejection",
+        errors.length === 0, errors.slice(0, 2).join(" | "));
+    } else {
+      check("audio: a failing cloud tier leaves a reported state, not a spinner", true, "control not offered");
+      check("audio: a failing cloud tier raises no unhandled rejection", true, "control not offered");
     }
     await context.close();
   }

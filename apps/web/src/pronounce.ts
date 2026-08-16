@@ -1,73 +1,164 @@
 /**
- * "Hear it" — one entry point, three synthetic sources, one unbreakable rule.
+ * "Hear it" — three synthetic providers, one order, one unbreakable rule.
  *
- *   pronounce(text)
- *     │
- *     ├─ local CosyVoice running?  ── yes ──▶  CosyVoice          best, needs a machine
- *     │        no
- *     ├─ device Mandarin voice?    ── yes ──▶  speechSynthesis    free, offline, everywhere
- *     │        no
- *     └─ cloud TTS configured?     ── yes ──▶  /api/speech        generated audio
- *              no
- *              ▼
- *          no audio, said plainly
+ *   user taps 🔊
+ *        │
+ *        ▼
+ *   1. local CosyVoice running?  ── yes ──▶  best quality, needs a machine
+ *        │ no
+ *   2. device Mandarin voice?    ── yes ──▶  free, offline, on almost every phone
+ *        │ no
+ *   3. Cloudflare MeloTTS        ── yes ──▶  /api/tts, natural, needs network once
+ *        │ no
+ *        ▼
+ *   PronounceError — the control is not rendered, and Settings says why
  *
- * WHY A CHAIN RATHER THAN A CHOICE. The tiers are good at different things and
- * none dominates. CosyVoice sounds far better and returns content-addressed
- * bytes, but needs hardware a phone does not have. The device voice is mediocre
- * but universal, free, offline and instant — and is what almost every learner
- * actually gets. The cloud tier exists for the device that has neither: a
- * locked-down Android with no Chinese voice pack, a desktop Linux browser with
- * no zh-CN voice. On those, the choice is this or silence.
+ * WHY THIS ORDER, having considered CosyVoice → Cloudflare → device.
  *
- * ORDER IS DELIBERATE. Quality first, then the offline-capable tier, then the
- * one that costs a request. Putting the cloud tier higher would spend network on
- * devices that already had a perfectly good voice sitting idle.
+ * The brief invited the cloud tier to sit second, on the grounds that MeloTTS
+ * sounds better than a stock system voice. It usually does. It is still the
+ * wrong place for it, for reasons that outrank quality here:
  *
- * THE RULE ALL THREE OBEY. Everything here is SYNTHETIC (spec p.21). It is:
+ *   RELIABILITY, the stated first priority. The device voice depends on nothing
+ *   — no network, no account, no upstream quota, no third party's availability.
+ *   Cloudflare depends on all of them. Putting a networked provider ahead of a
+ *   local one makes the common case fragile to improve the rare case.
+ *
+ *   LATENCY. `speechSynthesis` speaks in tens of milliseconds. A Workers AI
+ *   round trip plus MP3 transfer is hundreds at best, on a control a learner
+ *   taps repeatedly while reading a word list.
+ *
+ *   OFFLINE, which the brief lists explicitly. On a phone in a tunnel the device
+ *   voice works and the cloud does not. Ordering the cloud first would mean a
+ *   first-time word is silent offline even though the phone could have said it.
+ *
+ *   COST. Every cloud clip is a Workers AI request. Spending one on a device
+ *   that already has a perfectly good voice sitting idle buys nothing.
+ *
+ * So the cloud tier is where it does the most good: on the devices that
+ * genuinely cannot speak — a locked-down Android with no Chinese voice pack, a
+ * desktop Linux browser with no zh-CN speech-dispatcher voice, a device whose
+ * only Chinese voice is Cantonese (refused outright, because a Cantonese reading
+ * of a Mandarin word is a wrong answer delivered confidently). For those the
+ * choice was silence, and now it is natural Mandarin.
+ *
+ * The order lives in ONE array below. Changing it is a one-line edit and needs
+ * no UI change, which is the point of the provider abstraction.
+ *
+ * THE RULE ALL THREE OBEY. Everything here is SYNTHETIC (spec p.21):
  *   - always labelled as a generated voice, never as a pronunciation reference;
  *   - never the cue for an audio-primary task — `CanonicalAudioCue` is the only
- *     thing that may speak before an answer, and it plays verified human bytes
+ *     component that speaks before an answer, and it plays verified human bytes
  *     or refuses the task outright;
  *   - never evidence: pressing play grades nothing and moves no trace;
- *   - never canonical, which `canSatisfyCanonicalAudio` enforces structurally by
- *     accepting only `sourceType: "human"`.
- *
- * So this file makes audio USEFUL without making it AUTHORITATIVE, which is the
- * distinction the whole audio design rests on.
+ *   - never canonical — `canSatisfyCanonicalAudio` accepts only `"human"`, and
+ *     `isCanonical` additionally refuses anything flagged synthetic.
  */
 import { SPEECH_AVAILABLE, SpeechUnavailable, speak, speechServiceReachable } from "./speech.ts";
+import { deviceVoiceStatus, prepareDeviceUtterance } from "./device-voice.ts";
 import {
-  DeviceVoiceUnavailable,
-  deviceVoiceStatus,
-  prepareDeviceUtterance,
-} from "./device-voice.ts";
-import { CloudVoiceUnavailable, cloudVoiceStatus, fetchCloudClip, resetCloudVoiceCache } from "./cloud-voice.ts";
+  MODEL, cloudVoiceStatus, fetchCloudClip, resetCloudVoiceCache,
+} from "./cloud-voice.ts";
+import { playThrough, unlockAudio } from "./audio-unlock.ts";
 import { clampRate } from "./voice-select.ts";
+import {
+  PronounceError, firstReady, prepareFrom,
+  type Playable, type PronounceOptions, type Pronunciation,
+  type PronunciationProvider, type PronunciationSourceId,
+} from "./routing.ts";
 
-export type PronunciationSourceId = "local-service" | "device-voice" | "cloud-voice";
+export { PronounceError } from "./routing.ts";
+export type { Pronunciation, PronunciationSourceId } from "./routing.ts";
 
-export interface Pronunciation {
-  source: PronunciationSourceId;
-  /** What the learner is told they are hearing. */
-  description: string;
-  /** Resolves when playback finishes. */
-  play(): Promise<void>;
-  stop(): void;
-  /** Releases any object URL. Safe to call more than once. */
-  release(): void;
+// ---------------------------------------------------------------------------
+// The three providers.
+
+/** Tier 1 — the local CosyVoice service. Best audio, needs a machine. */
+const localService: PronunciationProvider = {
+  id: "local-service",
+  source: { sourceType: "synthetic", provider: "cosyvoice", modelVersion: "local-service" },
+  // CONFIGURED IS NOT RUNNING. A dev machine serving the app from localhost has
+  // a service URL by default and usually nothing behind it; conflating the two
+  // is what once made the Words screen render hundreds of failing buttons.
+  probe: async () => SPEECH_AVAILABLE && await speechServiceReachable(),
+  prepare: async (text, opts) => {
+    let clip: Awaited<ReturnType<typeof speak>>;
+    try {
+      clip = await speak(text, { speed: opts.speed });
+    } catch (error) {
+      if (error instanceof SpeechUnavailable) throw error;
+      throw error;
+    }
+    return elementClip(
+      clip.objectUrl,
+      opts,
+      `${clip.provenance.provider} ${clip.provenance.modelVersion}`,
+    );
+  },
+};
+
+/** Tier 2 — the device's own Mandarin voice. Free, offline, everywhere. */
+const deviceVoice: PronunciationProvider = {
+  id: "device-voice",
+  source: { sourceType: "synthetic", provider: "device-speech-synthesis", modelVersion: "platform" },
+  probe: async () => (await deviceVoiceStatus()).available,
+  prepare: async (text, opts) => {
+    const utterance = await prepareDeviceUtterance(text, { rate: opts.speed });
+    const status = await deviceVoiceStatus();
+    return {
+      description: status.description,
+      play: () => utterance.play(),
+      stop: () => utterance.stop(),
+      release: () => {},
+    };
+  },
+};
+
+/** Tier 3 — Cloudflare Workers AI / MeloTTS, proxied by `/api/tts`. */
+const cloudVoice: PronunciationProvider = {
+  id: "cloud-voice",
+  source: { sourceType: "synthetic", provider: "cloudflare-workers-ai", modelVersion: MODEL },
+  probe: async () => (await cloudVoiceStatus()).available,
+  prepare: async (text, opts) => {
+    const clip = await fetchCloudClip(text, opts.speed);
+    return elementClip(
+      clip.objectUrl,
+      opts,
+      clip.fromCache ? "generated voice (cached here)" : "generated voice",
+    );
+  },
+};
+
+/**
+ * The chain. Order is the whole policy — see the note at the top of this file.
+ */
+export const PROVIDERS: readonly PronunciationProvider[] = [localService, deviceVoice, cloudVoice];
+
+/**
+ * Play a file through the element the tap already unlocked.
+ *
+ * Falling back to a fresh `Audio` keeps this working in tests and on platforms
+ * with no activation requirement; on iOS that fresh element would be blocked,
+ * which is exactly why the caller passes one in.
+ */
+function elementClip(objectUrl: string, opts: PronounceOptions, description: string): Playable {
+  const element = opts.element ?? new Audio();
+  let released = false;
+  return {
+    description,
+    play: () => playThrough(element, objectUrl, opts.speed),
+    stop: () => element.pause(),
+    release: () => {
+      if (released) return;
+      released = true;
+      element.pause();
+      URL.revokeObjectURL(objectUrl);
+    },
+  };
 }
 
-export type PronounceFailure = "no_source" | "unreachable" | "failed";
-
-export class PronounceError extends Error {
-  readonly reason: PronounceFailure;
-  constructor(reason: PronounceFailure, message: string) {
-    super(message);
-    this.name = "PronounceError";
-    this.reason = reason;
-  }
-}
+// ---------------------------------------------------------------------------
+// Readiness.
 
 export interface AudioReadiness {
   /** True when SOMETHING can speak on this device. */
@@ -76,17 +167,33 @@ export interface AudioReadiness {
   description: string;
 }
 
+const DESCRIPTION: Record<PronunciationSourceId, string> = {
+  "local-service": "local speech service",
+  "device-voice": "this device's Mandarin voice",
+  "cloud-voice": "generated on the server",
+};
+
 let readiness: Promise<AudioReadiness> | undefined;
 
 /**
  * What this device can do, probed once.
  *
- * Deliberately cached: the Words screen asks for hundreds of rows and the answer
- * cannot change between them. `resetAudioReadiness` exists for Settings, where
- * a learner who has just installed a voice wants to re-check without a reload.
+ * Cached because the Words screen asks for hundreds of rows and the answer
+ * cannot change between them. `resetAudioReadiness` exists for Settings, where a
+ * learner who has just installed a voice wants to re-check without a reload.
+ *
+ * Readiness is a claim about ACTUAL usable behaviour, not about configuration:
+ * every probe here either reaches the thing it describes or asks the platform
+ * directly. It is still only a claim — which is why `play()` falls back too.
  */
 export function audioReadiness(): Promise<AudioReadiness> {
-  readiness ??= probe();
+  readiness ??= (async () => {
+    const ready = await firstReady(PROVIDERS);
+    if (!ready.available || !ready.source) {
+      return { available: false, description: (await deviceVoiceStatus()).description };
+    }
+    return { available: true, source: ready.source, description: DESCRIPTION[ready.source] };
+  })();
   return readiness;
 }
 
@@ -95,33 +202,14 @@ export function resetAudioReadiness(): void {
   resetCloudVoiceCache();
 }
 
-async function probe(): Promise<AudioReadiness> {
-  // The service is preferred — but CONFIGURED is not the same as RUNNING, and
-  // conflating the two is how the word list ends up rendering hundreds of play
-  // buttons that every one of them fails. A dev machine serving the app from
-  // localhost has a service URL by default and usually no service behind it, so
-  // this asks the service whether it is actually there before promising sound.
-  if (SPEECH_AVAILABLE && await speechServiceReachable()) {
-    return { available: true, source: "local-service", description: "local speech service" };
-  }
-  const device = await deviceVoiceStatus();
-  if (device.available) {
-    return { available: true, source: "device-voice", description: device.description };
-  }
-  // Last tier: a device with no voice of its own. Asking the server costs one
-  // request and is the difference between audio and silence on such a device.
-  const cloud = await cloudVoiceStatus();
-  if (cloud.available) {
-    return { available: true, source: "cloud-voice", description: "generated on the server" };
-  }
-  return { available: false, description: device.description };
-}
+// ---------------------------------------------------------------------------
 
 /**
- * Speak some Mandarin. Prefers the service, falls back to the device voice.
+ * Speak some Mandarin, using the best provider that actually works.
  *
- * Nothing is audible until `play()` is called, so the sound starts inside the
- * tap handler — iOS Safari discards utterances queued before a user gesture.
+ * MUST be called from a user gesture on iOS. `unlockAudio()` runs first and
+ * synchronously, before any await, so Safari's activation is claimed while it
+ * still exists — see `audio-unlock.ts`.
  */
 export async function pronounce(
   text: string,
@@ -129,102 +217,10 @@ export async function pronounce(
 ): Promise<Pronunciation> {
   const trimmed = text.trim();
   if (trimmed.length === 0) throw new PronounceError("failed", "nothing to say");
-  const speed = clampRate(opts.speed ?? 1);
 
-  if (SPEECH_AVAILABLE) {
-    try {
-      return await fromService(trimmed, speed);
-    } catch (error) {
-      // A configured-but-down service is exactly when the device voice earns its
-      // place, so this falls through rather than reporting failure.
-      if (!(error instanceof SpeechUnavailable)) throw error;
-    }
-  }
+  // Synchronous, and first: everything after this point is async, and by then
+  // the gesture is gone.
+  const element = unlockAudio();
 
-  try {
-    const utterance = await prepareDeviceUtterance(trimmed, { rate: speed });
-    const device = await deviceVoiceStatus();
-    return {
-      source: "device-voice",
-      description: device.description,
-      play: () => utterance.play(),
-      stop: () => utterance.stop(),
-      release: () => {},
-    };
-  } catch (error) {
-    // A device with no Mandarin voice is precisely what the cloud tier is for.
-    if (!(error instanceof DeviceVoiceUnavailable)) {
-      throw new PronounceError("failed", (error as Error).message);
-    }
-  }
-
-  try {
-    return await fromCloud(trimmed, speed);
-  } catch (error) {
-    if (error instanceof CloudVoiceUnavailable) {
-      // Every tier has now declined. The UI treats this as "no audio here",
-      // which is honest and costs the learner nothing but sound.
-      throw new PronounceError("no_source", "this device has no Mandarin voice, and none is configured on the server");
-    }
-    throw new PronounceError("failed", (error as Error).message);
-  }
-}
-
-/**
- * The cloud tier, played like any other clip.
- *
- * Speed is applied with `playbackRate` rather than asked of the upstream:
- * browsers preserve pitch, every provider would want a different parameter for
- * it, and one cached clip then serves every speed instead of one per rate.
- */
-async function fromCloud(text: string, speed: number): Promise<Pronunciation> {
-  const clip = await fetchCloudClip(text);
-  const element = new Audio(clip.objectUrl);
-  element.playbackRate = speed;
-  let released = false;
-
-  return {
-    source: "cloud-voice",
-    description: clip.fromCache ? "generated on the server (cached here)" : "generated on the server",
-    play: () => new Promise<void>((resolve, reject) => {
-      element.currentTime = 0;
-      element.onended = () => resolve();
-      element.onerror = () => reject(new PronounceError("failed", "could not play that clip"));
-      element.play().catch(() => reject(new PronounceError("failed", "playback was refused")));
-    }),
-    stop: () => element.pause(),
-    release: () => {
-      if (released) return;
-      released = true;
-      element.pause();
-      URL.revokeObjectURL(clip.objectUrl);
-    },
-  };
-}
-
-async function fromService(text: string, speed: number): Promise<Pronunciation> {
-  const clip = await speak(text, { speed });
-  const element = new Audio(clip.objectUrl);
-  // The service bakes speed in when ffmpeg is present; when it could not, apply
-  // it here. Browsers preserve pitch for playbackRate, which is what we want.
-  element.playbackRate = speed;
-  let released = false;
-
-  return {
-    source: "local-service",
-    description: `${clip.provenance.provider} ${clip.provenance.modelVersion}`,
-    play: () => new Promise<void>((resolve, reject) => {
-      element.currentTime = 0;
-      element.onended = () => resolve();
-      element.onerror = () => reject(new PronounceError("failed", "could not play that clip"));
-      element.play().catch(() => reject(new PronounceError("failed", "playback was refused")));
-    }),
-    stop: () => element.pause(),
-    release: () => {
-      if (released) return;
-      released = true;
-      element.pause();
-      URL.revokeObjectURL(clip.objectUrl);
-    },
-  };
+  return prepareFrom(PROVIDERS, trimmed, { speed: clampRate(opts.speed ?? 1), element });
 }
